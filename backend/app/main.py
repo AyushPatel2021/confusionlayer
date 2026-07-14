@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timezone
 
+from pydantic import BaseModel
+from sqlalchemy import select
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -19,9 +21,71 @@ from app.auth import (
     user_response,
 )
 from app.db import get_db
-from app.models import User
+from app.models import Chapter, ChapterUnlock, Classroom, ClassroomStudent, Concept, MisconceptionTaxonomy, Subject, User
 
 app = FastAPI(title="ConfusionLayer API")
+
+
+class SubjectResponse(BaseModel):
+    id: int
+    name: str
+    board: str
+    class_level: str
+
+
+class ClassroomResponse(BaseModel):
+    id: int
+    name: str
+    subject: SubjectResponse
+
+
+class DemoContextResponse(BaseModel):
+    classroom: ClassroomResponse
+    teacher_count: int
+    student_count: int
+
+
+class ConceptSummaryResponse(BaseModel):
+    id: int
+    title: str
+    order: int
+    locked: bool
+
+
+class ChapterSyllabusResponse(BaseModel):
+    id: int
+    title: str
+    order: int
+    locked: bool
+    concepts: list[ConceptSummaryResponse]
+
+
+class StudentSyllabusResponse(BaseModel):
+    classroom: ClassroomResponse
+    chapters: list[ChapterSyllabusResponse]
+
+
+class ChapterUnlockResponse(BaseModel):
+    id: int
+    classroom_id: int
+    chapter_id: int
+    unlocked_by: int | None
+    unlocked_at: datetime
+
+
+class TaxonomyResponse(BaseModel):
+    code: str
+    description: str
+
+
+class ConceptDetailResponse(BaseModel):
+    id: int
+    title: str
+    order: int
+    chapter_id: int
+    chapter_title: str
+    subject: SubjectResponse
+    taxonomy: list[TaxonomyResponse]
 
 
 @app.get("/api/health")
@@ -71,3 +135,146 @@ def me(current_user: User = Depends(get_current_user)) -> AuthResponse:
 def logout(response: Response) -> dict[str, bool]:
     clear_auth_cookie(response)
     return {"ok": True}
+
+
+@app.get("/api/demo/context", response_model=DemoContextResponse)
+def demo_context(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DemoContextResponse:
+    classroom = _get_user_classroom(db, current_user)
+    return DemoContextResponse(
+        classroom=_classroom_response(classroom),
+        teacher_count=1,
+        student_count=len(classroom.students),
+    )
+
+
+@app.get("/api/student/syllabus", response_model=StudentSyllabusResponse)
+def student_syllabus(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> StudentSyllabusResponse:
+    classroom = _get_user_classroom(db, current_user)
+    chapters = db.scalars(select(Chapter).where(Chapter.subject_id == classroom.subject_id).order_by(Chapter.order)).all()
+    unlocked_ids = set(
+        db.scalars(select(ChapterUnlock.chapter_id).where(ChapterUnlock.classroom_id == classroom.id)).all()
+    )
+
+    return StudentSyllabusResponse(
+        classroom=_classroom_response(classroom),
+        chapters=[
+            ChapterSyllabusResponse(
+                id=chapter.id,
+                title=chapter.title,
+                order=chapter.order,
+                locked=chapter.id not in unlocked_ids,
+                concepts=[
+                    ConceptSummaryResponse(id=concept.id, title=concept.title, order=concept.order, locked=chapter.id not in unlocked_ids)
+                    for concept in sorted(chapter.concepts, key=lambda item: item.order)
+                ],
+            )
+            for chapter in chapters
+        ],
+    )
+
+
+@app.post(
+    "/api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock",
+    response_model=ChapterUnlockResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def unlock_chapter(
+    classroom_id: int,
+    chapter_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChapterUnlockResponse:
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    if current_user.role == "student" or (current_user.role == "teacher" and classroom.teacher_id != current_user.teacher_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to unlock this classroom")
+
+    chapter = db.get(Chapter, chapter_id)
+    if not chapter or chapter.subject_id != classroom.subject_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found for this classroom")
+
+    unlock = db.scalar(
+        select(ChapterUnlock).where(ChapterUnlock.classroom_id == classroom_id, ChapterUnlock.chapter_id == chapter_id)
+    )
+    if not unlock:
+        unlock = ChapterUnlock(
+            classroom_id=classroom_id,
+            chapter_id=chapter_id,
+            unlocked_by=current_user.teacher_id if current_user.role == "teacher" else None,
+        )
+        db.add(unlock)
+        db.commit()
+        db.refresh(unlock)
+
+    return ChapterUnlockResponse(
+        id=unlock.id,
+        classroom_id=unlock.classroom_id,
+        chapter_id=unlock.chapter_id,
+        unlocked_by=unlock.unlocked_by,
+        unlocked_at=unlock.unlocked_at,
+    )
+
+
+@app.get("/api/concepts/{concept_id}", response_model=ConceptDetailResponse)
+def concept_detail(
+    concept_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ConceptDetailResponse:
+    concept = db.get(Concept, concept_id)
+    if not concept:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found")
+
+    classroom = _get_user_classroom(db, current_user)
+    if concept.chapter.subject_id != classroom.subject_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found for this classroom")
+    if current_user.role == "student" and not _is_chapter_unlocked(db, classroom.id, concept.chapter_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chapter is locked")
+
+    taxonomy = db.scalars(
+        select(MisconceptionTaxonomy).where(MisconceptionTaxonomy.concept_id == concept.id).order_by(MisconceptionTaxonomy.code)
+    ).all()
+    return ConceptDetailResponse(
+        id=concept.id,
+        title=concept.title,
+        order=concept.order,
+        chapter_id=concept.chapter_id,
+        chapter_title=concept.chapter.title,
+        subject=_subject_response(concept.chapter.subject),
+        taxonomy=[TaxonomyResponse(code=item.code, description=item.description) for item in taxonomy],
+    )
+
+
+def _get_user_classroom(db: Session, user: User) -> Classroom:
+    if user.role == "teacher" and user.teacher_id:
+        classroom = db.scalar(select(Classroom).where(Classroom.teacher_id == user.teacher_id).order_by(Classroom.id))
+    elif user.role == "student" and user.student_id:
+        classroom = db.scalar(
+            select(Classroom)
+            .join(ClassroomStudent, ClassroomStudent.classroom_id == Classroom.id)
+            .where(ClassroomStudent.student_id == user.student_id)
+            .order_by(Classroom.id)
+        )
+    elif user.role == "admin":
+        classroom = db.scalar(select(Classroom).order_by(Classroom.id))
+    else:
+        classroom = None
+
+    if not classroom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No classroom is available for this user")
+    return classroom
+
+
+def _is_chapter_unlocked(db: Session, classroom_id: int, chapter_id: int) -> bool:
+    return bool(
+        db.scalar(select(ChapterUnlock.id).where(ChapterUnlock.classroom_id == classroom_id, ChapterUnlock.chapter_id == chapter_id))
+    )
+
+
+def _classroom_response(classroom: Classroom) -> ClassroomResponse:
+    return ClassroomResponse(id=classroom.id, name=classroom.name, subject=_subject_response(classroom.subject))
+
+
+def _subject_response(subject: Subject) -> SubjectResponse:
+    return SubjectResponse(id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level)

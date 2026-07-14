@@ -110,6 +110,13 @@ Auth endpoints:
 
 Auth responses include a bearer token and set an `access_token` HttpOnly cookie. API requests may authenticate with either the cookie or `Authorization: Bearer <token>`.
 
+Core learning endpoints:
+
+- `GET /api/demo/context`
+- `GET /api/student/syllabus`
+- `POST /api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock`
+- `GET /api/concepts/{concept_id}`
+
 ## Stack
 
 - Frontend: Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind
