@@ -18,6 +18,7 @@ class Teacher(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
 
     classrooms: Mapped[list[Classroom]] = relationship(back_populates="teacher")
+    user: Mapped[User | None] = relationship(back_populates="teacher")
 
 
 class Student(Base):
@@ -28,6 +29,32 @@ class Student(Base):
 
     classrooms: Mapped[list[ClassroomStudent]] = relationship(back_populates="student")
     mastery_records: Mapped[list[MasteryRecord]] = relationship(back_populates="student")
+    user: Mapped[User | None] = relationship(back_populates="student")
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'teacher', 'student')", name="ck_users_role_values"),
+        CheckConstraint(
+            "(role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL) OR "
+            "(role = 'student' AND student_id IS NOT NULL AND teacher_id IS NULL) OR "
+            "(role = 'admin' AND teacher_id IS NULL AND student_id IS NULL)",
+            name="ck_users_role_profile_link",
+        ),
+        UniqueConstraint("email", name="uq_users_email"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(40), nullable=False)
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
+    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    teacher: Mapped[Teacher | None] = relationship(back_populates="user")
+    student: Mapped[Student | None] = relationship(back_populates="user")
 
 
 class Subject(Base):

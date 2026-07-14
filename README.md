@@ -16,6 +16,7 @@ Night 1 foundation is scaffolded in this repository:
 - Alembic initialized with the first migration.
 - Idempotent Night 1 seed script for the demo classroom data.
 - Deterministic mastery formula implemented as pure tested backend code.
+- JWT auth with HttpOnly cookie storage, bearer-token fallback, and `admin`/`teacher`/`student` roles.
 - `.env.example` for private deployment values.
 - `scripts/redeploy.sh` for one-command redeploys on the VM.
 
@@ -99,6 +100,16 @@ Backend health:
 https://confusionlayer.znova.in/api/health
 ```
 
+Auth endpoints:
+
+- `POST /api/auth/signup` with JSON `{ "email", "password", "role": "admin|teacher|student", "name" }`
+- `POST /api/auth/login` with JSON `{ "email", "password" }`
+- `POST /api/auth/demo` with JSON `{ "role": "teacher|student" }`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+
+Auth responses include a bearer token and set an `access_token` HttpOnly cookie. API requests may authenticate with either the cookie or `Authorization: Bearer <token>`.
+
 ## Stack
 
 - Frontend: Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind
@@ -180,7 +191,12 @@ POSTGRES_PASSWORD=change-me
 DATABASE_URL=postgresql+psycopg://confusionlayer:change-me@postgres:5432/confusionlayer
 OPENAI_API_KEY=sk-...
 AI_DAILY_CALL_LIMIT=50
+JWT_SECRET=change-this-to-a-long-random-secret
+JWT_EXPIRES_HOURS=24
+AUTH_COOKIE_SECURE=0
 ```
+
+Use `AUTH_COOKIE_SECURE=1` on HTTPS deployments.
 
 ## Oracle VM Deployment Notes
 
