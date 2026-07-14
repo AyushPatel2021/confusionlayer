@@ -1,11 +1,11 @@
 {
     "schema_version": 1,
-    "commit": "dd4af4aad9f2cc9f20d6563c652c613f60d7d49f",
-    "indexed_at": "2026-07-14T16:51:03Z",
+    "commit": "dc85e25c86afe724563cd8e0cbcbaa0c6da62859",
+    "indexed_at": "2026-07-14T17:06:21Z",
     "project": "home-erp-my_projects-confusionlayer",
-    "nodes": 201,
-    "edges": 344,
-    "original_size": 1769472,
-    "compressed_size": 40644,
+    "nodes": 261,
+    "edges": 572,
+    "original_size": 1900544,
+    "compressed_size": 60977,
     "compression_level": 3
 }
