@@ -97,6 +97,12 @@ export PYTHONPATH=backend
 alembic upgrade head
 ```
 
+Inside the backend container:
+
+```bash
+python -m alembic -c alembic.ini upgrade head
+```
+
 Load the Night 1 demo seed data:
 
 ```bash
