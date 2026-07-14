@@ -20,6 +20,48 @@ Night 1 foundation is scaffolded in this repository:
 
 The Oracle VM at `80.225.232.209` is reachable and already has Docker + Docker Compose installed. It currently runs another nginx-backed deployment for `znova.in`, so ConfusionLayer should not take over ports `80/443` until the subdomain/reverse-proxy choice below is completed.
 
+## Curriculum Source Strategy
+
+ConfusionLayer should be official-aligned, not a copy of textbook content.
+
+Use official public sources for structure and links:
+
+- CBSE Academic curriculum, including the 2026-27 Class X Science curriculum: https://cbseacademic.nic.in/curriculum_2027.html
+- NCERT textbook portal for Classes I-XII and chapter/textbook PDFs: https://ncert.nic.in/textbook.php?ln=en
+- ePathshala for NCERT e-resources: https://epathshala.nic.in/
+
+Safe usage for this prototype:
+
+- Use board, class, subject, chapter titles, concept names, and syllabus structure.
+- Link users to official NCERT/ePathshala resources where useful.
+- Store our own concept summaries, learning objectives, allowed/excluded scope, misconception taxonomy, questions, rubrics, and examples.
+- Let GPT-5.6 generate tutorials/questions only from structured concept records, not from a bare chapter name.
+
+Avoid:
+
+- Committing NCERT PDFs or copied chapter files.
+- Storing complete textbook chapters in the DB.
+- Copying long textbook passages, diagrams, illustrations, or end-of-chapter questions in bulk.
+- Using CBSE/NCERT branding in a way that implies endorsement.
+
+Planned content pipeline:
+
+```text
+Official syllabus structure
+        ↓
+Manually curated concept map
+        ↓
+Original learning objectives + allowed/excluded scope
+        ↓
+GPT-5.6 generates tutorials/questions inside that scope
+```
+
+For the hackathon, keep scope tight: one board, one class, one subject, one highly polished functional chapter, plus locked downstream concepts where needed for the forecast engine. A broad automated curriculum importer is intentionally deferred until the core demo works.
+
+Disclaimer:
+
+> ConfusionLayer is an independent educational prototype and is not affiliated with or endorsed by CBSE or NCERT. Curriculum references are used for educational alignment. Official textbooks remain available through NCERT and ePathshala.
+
 ## Project Spec Alignment
 
 The implementation is tracking `../PROJECT_SPEC.md`.
