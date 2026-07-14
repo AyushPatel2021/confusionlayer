@@ -22,6 +22,9 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       AI_DAILY_CALL_LIMIT: ${AI_DAILY_CALL_LIMIT:-50}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_HOURS: ${JWT_EXPIRES_HOURS:-24}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,4 +48,3 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
-
