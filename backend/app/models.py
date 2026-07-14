@@ -1,0 +1,219 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Teacher(Base):
+    __tablename__ = "teachers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    classrooms: Mapped[list[Classroom]] = relationship(back_populates="teacher")
+
+
+class Student(Base):
+    __tablename__ = "students"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    classrooms: Mapped[list[ClassroomStudent]] = relationship(back_populates="student")
+    mastery_records: Mapped[list[MasteryRecord]] = relationship(back_populates="student")
+
+
+class Subject(Base):
+    __tablename__ = "subjects"
+    __table_args__ = (UniqueConstraint("name", "board", "class_level", name="uq_subject_identity"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    board: Mapped[str] = mapped_column(String(80), nullable=False)
+    class_level: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    chapters: Mapped[list[Chapter]] = relationship(back_populates="subject")
+    classrooms: Mapped[list[Classroom]] = relationship(back_populates="subject")
+
+
+class Chapter(Base):
+    __tablename__ = "chapters"
+    __table_args__ = (
+        UniqueConstraint("subject_id", "order", name="uq_chapter_subject_order"),
+        UniqueConstraint("subject_id", "title", name="uq_chapter_subject_title"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    subject: Mapped[Subject] = relationship(back_populates="chapters")
+    concepts: Mapped[list[Concept]] = relationship(back_populates="chapter")
+
+
+class Concept(Base):
+    __tablename__ = "concepts"
+    __table_args__ = (
+        UniqueConstraint("chapter_id", "order", name="uq_concept_chapter_order"),
+        UniqueConstraint("chapter_id", "title", name="uq_concept_chapter_title"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    chapter: Mapped[Chapter] = relationship(back_populates="concepts")
+    taxonomy: Mapped[list[MisconceptionTaxonomy]] = relationship(back_populates="concept")
+
+
+class ConceptEdge(Base):
+    __tablename__ = "concept_edges"
+    __table_args__ = (
+        CheckConstraint("concept_id <> prerequisite_concept_id", name="ck_concept_edge_not_self"),
+        UniqueConstraint("concept_id", "prerequisite_concept_id", name="uq_concept_edge_pair"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    prerequisite_concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, default=1.0, server_default="1.0", nullable=False)
+
+
+class Classroom(Base):
+    __tablename__ = "classrooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+
+    teacher: Mapped[Teacher] = relationship(back_populates="classrooms")
+    subject: Mapped[Subject] = relationship(back_populates="classrooms")
+    students: Mapped[list[ClassroomStudent]] = relationship(back_populates="classroom")
+
+
+class ClassroomStudent(Base):
+    __tablename__ = "classroom_students"
+    __table_args__ = (UniqueConstraint("classroom_id", "student_id", name="uq_classroom_student"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+
+    classroom: Mapped[Classroom] = relationship(back_populates="students")
+    student: Mapped[Student] = relationship(back_populates="classrooms")
+
+
+class ChapterUnlock(Base):
+    __tablename__ = "chapter_unlocks"
+    __table_args__ = (UniqueConstraint("classroom_id", "chapter_id", name="uq_chapter_unlock_classroom_chapter"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False)
+    unlocked_by: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MisconceptionTaxonomy(Base):
+    __tablename__ = "misconception_taxonomy"
+    __table_args__ = (UniqueConstraint("concept_id", "code", name="uq_taxonomy_concept_code"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    concept: Mapped[Concept] = relationship(back_populates="taxonomy")
+
+
+class MasteryRecord(Base):
+    __tablename__ = "mastery_records"
+    __table_args__ = (
+        CheckConstraint("quiz_accuracy_score >= 0 AND quiz_accuracy_score <= 1", name="ck_mastery_quiz_range"),
+        CheckConstraint("open_answer_score >= 0 AND open_answer_score <= 1", name="ck_mastery_open_range"),
+        CheckConstraint("misconception_recurrence >= 0 AND misconception_recurrence <= 1", name="ck_mastery_recurrence_range"),
+        CheckConstraint("retention_score >= 0 AND retention_score <= 1", name="ck_mastery_retention_range"),
+        CheckConstraint("computed_mastery >= 0 AND computed_mastery <= 1", name="ck_mastery_computed_range"),
+        UniqueConstraint("student_id", "concept_id", name="uq_mastery_student_concept"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    quiz_accuracy_score: Mapped[float] = mapped_column(Float, nullable=False)
+    open_answer_score: Mapped[float] = mapped_column(Float, nullable=False)
+    misconception_recurrence: Mapped[float] = mapped_column(Float, nullable=False)
+    retention_score: Mapped[float] = mapped_column(Float, nullable=False)
+    computed_mastery: Mapped[float] = mapped_column(Float, nullable=False)
+    last_reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_review_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    student: Mapped[Student] = relationship(back_populates="mastery_records")
+
+
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+    __table_args__ = (
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_quiz_confidence_range"),
+        CheckConstraint("mode IN ('quiz', 'exam', 'teach_back')", name="ck_quiz_mode_values"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    student_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    misconception_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    mode: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class TeachBackAttempt(Base):
+    __tablename__ = "teach_back_attempts"
+    __table_args__ = (
+        CheckConstraint("clarity_score >= 0 AND clarity_score <= 1", name="ck_teach_back_clarity_range"),
+        CheckConstraint("accuracy_score >= 0 AND accuracy_score <= 1", name="ck_teach_back_accuracy_range"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    student_explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    clarity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    accuracy_score: Mapped[float] = mapped_column(Float, nullable=False)
+    gpt_feedback: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ForecastRecord(Base):
+    __tablename__ = "forecast_records"
+    __table_args__ = (CheckConstraint("predicted_difficulty >= 0 AND predicted_difficulty <= 1", name="ck_forecast_difficulty_range"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    predicted_difficulty: Mapped[float] = mapped_column(Float, nullable=False)
+    contributing_concepts: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ConfusionBrief(Base):
+    __tablename__ = "confusion_briefs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    generated_text: Mapped[str] = mapped_column(Text, nullable=False)
+    affected_student_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    misconception_breakdown: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

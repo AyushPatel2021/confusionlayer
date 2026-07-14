@@ -6,12 +6,15 @@ ConfusionLayer is a predictive, teacher-gated AI learning platform for the OpenA
 
 ## Current Status
 
-Night 1 deployment foundation is scaffolded in this repository:
+Night 1 foundation is scaffolded in this repository:
 
 - Docker Compose stack with `postgres`, `backend`, and `frontend`.
 - FastAPI placeholder backend at `/api/health`.
 - Vue 3 + TypeScript + Vite + Pinia + Vue Router + Tailwind placeholder frontend.
 - Caddy-based static frontend container with API reverse proxy.
+- SQLAlchemy models for the Project Spec Section 4 schema.
+- Alembic initialized with the first migration.
+- Idempotent Night 1 seed script for the demo classroom data.
 - `.env.example` for private deployment values.
 - `scripts/redeploy.sh` for one-command redeploys on the VM.
 
@@ -33,7 +36,13 @@ Night 1 / Section 3.1:
 - [x] Redeploy script created.
 - [x] ConfusionLayer subdomain DNS record created.
 - [x] HTTPS confirmed on the final ConfusionLayer domain through nginx + Let's Encrypt.
-- [ ] Phone-on-mobile-data acceptance test passed.
+- [x] Phone-on-mobile-data acceptance test passed.
+- [x] SQLAlchemy models created for the full Section 4 schema.
+- [x] Alembic initialized.
+- [x] First migration created.
+- [x] Seed script written.
+- [x] Misconception taxonomy hand-written for all seeded concepts.
+- [x] Local seed acceptance test passed.
 
 Live placeholder:
 
@@ -80,6 +89,29 @@ Open:
 ```text
 http://localhost
 ```
+
+Run database migrations:
+
+```bash
+export PYTHONPATH=backend
+alembic upgrade head
+```
+
+Load the Night 1 demo seed data:
+
+```bash
+export PYTHONPATH=backend
+python -m app.seed
+```
+
+Local seed acceptance result from 2026-07-14:
+
+- 1 subject, 3 chapters, 15 concepts, 15 concept edges.
+- 45 fixed misconception taxonomy rows.
+- 10 seeded students.
+- 30 quiz attempts and 150 mastery records.
+- Clustered misconceptions: `BAL_SUBSCRIPT_CHANGE` and `RXN_ELECTRONEGATIVITY_CONFUSION` each appear for 3 different students on the same concept.
+- Mastery review dates span 33 days.
 
 ## Environment Variables
 
