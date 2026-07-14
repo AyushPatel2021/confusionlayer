@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
+from app.mastery import compute_mastery
 from app.models import (
     Chapter,
     ChapterUnlock,
@@ -29,21 +30,6 @@ class ConceptSeed:
     title: str
     order: int
     misconceptions: tuple[tuple[str, str], ...]
-
-
-def computed_mastery(
-    quiz_accuracy_score: float,
-    open_answer_score: float,
-    misconception_recurrence: float,
-    retention_score: float,
-) -> float:
-    return round(
-        0.50 * quiz_accuracy_score
-        + 0.25 * open_answer_score
-        + 0.15 * (1 - misconception_recurrence)
-        + 0.10 * retention_score,
-        4,
-    )
 
 
 CHAPTERS = (
@@ -344,7 +330,7 @@ def seed(session: Session) -> None:
             base = max(0.42, min(0.92, 0.88 - (student_index * 0.035) - ((concept_index % 5) * 0.025)))
             recurrence = max(0.05, min(0.65, 0.18 + (student_index % 4) * 0.08 + (concept_index % 3) * 0.04))
             retention = max(0.38, min(0.9, base - (review_offsets[student_index] * 0.006)))
-            mastery = computed_mastery(base, max(0.4, base - 0.08), recurrence, retention)
+            mastery = compute_mastery(base, max(0.4, base - 0.08), recurrence, retention)
             reviewed_at = now - timedelta(days=review_offsets[student_index] + (concept_index % 4))
             get_or_create(
                 session,

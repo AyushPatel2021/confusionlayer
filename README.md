@@ -15,6 +15,7 @@ Night 1 foundation is scaffolded in this repository:
 - SQLAlchemy models for the Project Spec Section 4 schema.
 - Alembic initialized with the first migration.
 - Idempotent Night 1 seed script for the demo classroom data.
+- Deterministic mastery formula implemented as pure tested backend code.
 - `.env.example` for private deployment values.
 - `scripts/redeploy.sh` for one-command redeploys on the VM.
 
@@ -160,6 +161,12 @@ Local seed acceptance result from 2026-07-14:
 - 30 quiz attempts and 150 mastery records.
 - Clustered misconceptions: `BAL_SUBSCRIPT_CHANGE` and `RXN_ELECTRONEGATIVITY_CONFUSION` each appear for 3 different students on the same concept.
 - Mastery review dates span 33 days.
+
+Run backend unit tests:
+
+```bash
+PYTHONPATH=backend python -m unittest discover -s backend/tests -v
+```
 
 ## Environment Variables
 
