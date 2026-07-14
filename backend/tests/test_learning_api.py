@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
 from unittest import TestCase
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-secret-for-learning-api-tests")
 os.environ.setdefault("AUTH_COOKIE_SECURE", "0")
 
-from fastapi.testclient import TestClient
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.auth import SignupRequest, create_access_token, create_user
-from app.db import get_db
-from app.main import app
+from app.auth import SignupRequest, create_user
+from app.main import concept_detail, demo_context, student_syllabus, unlock_chapter
 from app.models import (
     Base,
     Chapter,
@@ -42,84 +40,58 @@ class LearningApiTest(TestCase):
         self.db: Session = self.session_factory()
         self._seed_minimal_classroom()
 
-        def override_db() -> Generator[Session, None, None]:
-            db = self.session_factory()
-            try:
-                yield db
-            finally:
-                db.close()
-
-        app.dependency_overrides[get_db] = override_db
-        self.client = TestClient(app)
-
     def tearDown(self) -> None:
-        app.dependency_overrides.clear()
         self.db.close()
         self.engine.dispose()
 
     def test_demo_context_returns_user_classroom(self) -> None:
-        token = self._token_for(self.teacher_user)
+        response = demo_context(current_user=self.teacher_user, db=self.db)
 
-        response = self.client.get("/api/demo/context", headers=self._auth(token))
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["classroom"]["id"], self.classroom.id)
-        self.assertEqual(body["classroom"]["subject"]["name"], "CBSE Class 10 Science")
-        self.assertEqual(body["student_count"], 1)
+        self.assertEqual(response.classroom.id, self.classroom.id)
+        self.assertEqual(response.classroom.subject.name, "CBSE Class 10 Science")
+        self.assertEqual(response.student_count, 1)
 
     def test_student_syllabus_respects_unlock_state(self) -> None:
-        token = self._token_for(self.student_user)
+        response = student_syllabus(current_user=self.student_user, db=self.db)
 
-        response = self.client.get("/api/student/syllabus", headers=self._auth(token))
-
-        self.assertEqual(response.status_code, 200)
-        chapters = response.json()["chapters"]
-        self.assertEqual(chapters[0]["locked"], False)
-        self.assertEqual(chapters[0]["concepts"][0]["locked"], False)
-        self.assertEqual(chapters[1]["locked"], True)
-        self.assertEqual(chapters[1]["concepts"][0]["locked"], True)
+        self.assertEqual(response.chapters[0].locked, False)
+        self.assertEqual(response.chapters[0].concepts[0].locked, False)
+        self.assertEqual(response.chapters[1].locked, True)
+        self.assertEqual(response.chapters[1].concepts[0].locked, True)
 
     def test_teacher_can_unlock_own_classroom_chapter(self) -> None:
-        token = self._token_for(self.teacher_user)
-
-        response = self.client.post(
-            f"/api/teacher/classrooms/{self.classroom.id}/chapters/{self.locked_chapter.id}/unlock",
-            headers=self._auth(token),
+        response = unlock_chapter(
+            classroom_id=self.classroom.id,
+            chapter_id=self.locked_chapter.id,
+            current_user=self.teacher_user,
+            db=self.db,
         )
 
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json()["chapter_id"], self.locked_chapter.id)
+        self.assertEqual(response.chapter_id, self.locked_chapter.id)
 
-        student_response = self.client.get("/api/student/syllabus", headers=self._auth(self._token_for(self.student_user)))
-        self.assertEqual(student_response.json()["chapters"][1]["locked"], False)
+        student_response = student_syllabus(current_user=self.student_user, db=self.db)
+        self.assertEqual(student_response.chapters[1].locked, False)
 
     def test_student_cannot_unlock_chapter(self) -> None:
-        token = self._token_for(self.student_user)
-
-        response = self.client.post(
-            f"/api/teacher/classrooms/{self.classroom.id}/chapters/{self.locked_chapter.id}/unlock",
-            headers=self._auth(token),
-        )
-
-        self.assertEqual(response.status_code, 403)
+        with self.assertRaises(HTTPException) as exc:
+            unlock_chapter(
+                classroom_id=self.classroom.id,
+                chapter_id=self.locked_chapter.id,
+                current_user=self.student_user,
+                db=self.db,
+            )
+        self.assertEqual(exc.exception.status_code, 403)
 
     def test_student_cannot_read_locked_concept_detail(self) -> None:
-        token = self._token_for(self.student_user)
-
-        response = self.client.get(f"/api/concepts/{self.locked_concept.id}", headers=self._auth(token))
-
-        self.assertEqual(response.status_code, 403)
+        with self.assertRaises(HTTPException) as exc:
+            concept_detail(concept_id=self.locked_concept.id, current_user=self.student_user, db=self.db)
+        self.assertEqual(exc.exception.status_code, 403)
 
     def test_student_can_read_unlocked_concept_detail(self) -> None:
-        token = self._token_for(self.student_user)
+        response = concept_detail(concept_id=self.unlocked_concept.id, current_user=self.student_user, db=self.db)
 
-        response = self.client.get(f"/api/concepts/{self.unlocked_concept.id}", headers=self._auth(token))
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["id"], self.unlocked_concept.id)
-        self.assertEqual(body["taxonomy"][0]["code"], "BAL_SUBSCRIPT_CHANGE")
+        self.assertEqual(response.id, self.unlocked_concept.id)
+        self.assertEqual(response.taxonomy[0].code, "BAL_SUBSCRIPT_CHANGE")
 
     def _seed_minimal_classroom(self) -> None:
         subject = Subject(name="CBSE Class 10 Science", board="CBSE", class_level="10")
@@ -171,11 +143,3 @@ class LearningApiTest(TestCase):
         )
         self.student_user.student_id = student.id
         self.db.commit()
-
-    @staticmethod
-    def _token_for(user) -> str:
-        return create_access_token(user)
-
-    @staticmethod
-    def _auth(token: str) -> dict[str, str]:
-        return {"Authorization": f"Bearer {token}"}
