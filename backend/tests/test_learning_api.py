@@ -26,6 +26,7 @@ from app.models import (
     Subject,
     Teacher,
 )
+from sqlalchemy import func, select
 
 
 class LearningApiTest(TestCase):
@@ -71,6 +72,29 @@ class LearningApiTest(TestCase):
 
         student_response = student_syllabus(current_user=self.student_user, db=self.db)
         self.assertEqual(student_response.chapters[1].locked, False)
+
+    def test_unlock_chapter_is_idempotent(self) -> None:
+        first = unlock_chapter(
+            classroom_id=self.classroom.id,
+            chapter_id=self.locked_chapter.id,
+            current_user=self.teacher_user,
+            db=self.db,
+        )
+        second = unlock_chapter(
+            classroom_id=self.classroom.id,
+            chapter_id=self.locked_chapter.id,
+            current_user=self.teacher_user,
+            db=self.db,
+        )
+        unlock_count = self.db.scalar(
+            select(func.count(ChapterUnlock.id)).where(
+                ChapterUnlock.classroom_id == self.classroom.id,
+                ChapterUnlock.chapter_id == self.locked_chapter.id,
+            )
+        )
+
+        self.assertEqual(second.id, first.id)
+        self.assertEqual(unlock_count, 1)
 
     def test_student_cannot_unlock_chapter(self) -> None:
         with self.assertRaises(HTTPException) as exc:

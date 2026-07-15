@@ -176,7 +176,6 @@ def student_syllabus(current_user: User = Depends(get_current_user), db: Session
 @app.post(
     "/api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock",
     response_model=ChapterUnlockResponse,
-    status_code=status.HTTP_201_CREATED,
 )
 def unlock_chapter(
     classroom_id: int,
