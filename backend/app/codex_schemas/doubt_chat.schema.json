@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["response", "response_type"],
+  "properties": {
+    "response": {
+      "type": "string",
+      "minLength": 1
+    },
+    "response_type": {
+      "type": "string",
+      "enum": ["guiding_question", "hint", "worked_step", "explanation"]
+    }
+  }
+}

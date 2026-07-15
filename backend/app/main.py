@@ -1,12 +1,12 @@
 import os
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.ai import check_and_increment_ai_usage, codex_model, generate_tutorial
+from app.ai import check_and_increment_ai_usage, codex_model, generate_doubt_response, generate_tutorial, grade_quiz_answer
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
@@ -22,7 +22,7 @@ from app.auth import (
     user_response,
 )
 from app.db import get_db
-from app.models import Chapter, ChapterUnlock, Classroom, ClassroomStudent, Concept, MisconceptionTaxonomy, Subject, User
+from app.models import Chapter, ChapterUnlock, Classroom, ClassroomStudent, Concept, MisconceptionTaxonomy, QuizAttempt, Subject, User
 
 app = FastAPI(title="ConfusionLayer API")
 
@@ -96,6 +96,37 @@ class TutorialRequest(BaseModel):
 class TutorialResponse(BaseModel):
     explanation: str
     worked_example: str
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class DoubtChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list)
+    turn_count: int = 1
+
+
+class DoubtChatResponse(BaseModel):
+    response: str
+    response_type: str
+
+
+class QuizGradeRequest(BaseModel):
+    question: str
+    student_answer: str
+    rubric: str
+
+
+class QuizGradeResponse(BaseModel):
+    is_correct: bool
+    misconception_code: str | None
+    misconception_summary: str
+    confidence: float
+    follow_up_question: str
+    attempt_id: int
 
 
 @app.get("/api/health")
@@ -261,6 +292,63 @@ def tutorial(
     return TutorialResponse(explanation=content.explanation, worked_example=content.worked_example)
 
 
+@app.post("/api/concepts/{concept_id}/doubt-chat", response_model=DoubtChatResponse)
+def doubt_chat(
+    concept_id: int,
+    payload: DoubtChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DoubtChatResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can use doubt chat")
+
+    concept = _get_accessible_concept(db, current_user, concept_id)
+    check_and_increment_ai_usage(db, current_user)
+    history = [{"role": item.role, "content": item.content} for item in payload.history]
+    content = generate_doubt_response(concept, payload.message, history, payload.turn_count)
+    return DoubtChatResponse(response=content.response, response_type=content.response_type)
+
+
+@app.post("/api/concepts/{concept_id}/quiz/grade", response_model=QuizGradeResponse)
+def grade_quiz(
+    concept_id: int,
+    payload: QuizGradeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> QuizGradeResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can submit quiz attempts")
+
+    concept = _get_accessible_concept(db, current_user, concept_id)
+    taxonomy_rows = _taxonomy_for_concept(db, concept.id)
+    taxonomy = [{"code": item.code, "description": item.description} for item in taxonomy_rows]
+    check_and_increment_ai_usage(db, current_user)
+    grade = grade_quiz_answer(concept, payload.question, payload.student_answer, payload.rubric, taxonomy)
+
+    attempt = QuizAttempt(
+        student_id=current_user.student_id,
+        concept_id=concept.id,
+        question=payload.question,
+        student_answer=payload.student_answer,
+        is_correct=grade.is_correct,
+        misconception_code=grade.misconception_code,
+        confidence=grade.confidence,
+        mode="quiz",
+    )
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+
+    return QuizGradeResponse(
+        is_correct=grade.is_correct,
+        misconception_code=grade.misconception_code,
+        misconception_summary=grade.misconception_summary,
+        confidence=grade.confidence,
+        follow_up_question=grade.follow_up_question,
+        attempt_id=attempt.id,
+    )
+
+
 def _get_accessible_concept(db: Session, user: User, concept_id: int) -> Concept:
     concept = db.get(Concept, concept_id)
     if not concept:
@@ -297,6 +385,14 @@ def _get_user_classroom(db: Session, user: User) -> Classroom:
 def _is_chapter_unlocked(db: Session, classroom_id: int, chapter_id: int) -> bool:
     return bool(
         db.scalar(select(ChapterUnlock.id).where(ChapterUnlock.classroom_id == classroom_id, ChapterUnlock.chapter_id == chapter_id))
+    )
+
+
+def _taxonomy_for_concept(db: Session, concept_id: int) -> list[MisconceptionTaxonomy]:
+    return list(
+        db.scalars(
+            select(MisconceptionTaxonomy).where(MisconceptionTaxonomy.concept_id == concept_id).order_by(MisconceptionTaxonomy.code)
+        ).all()
     )
 
 

@@ -14,8 +14,19 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth import SignupRequest, create_user
-from app.ai import TutorialContent
-from app.main import TutorialRequest, concept_detail, demo_context, student_syllabus, tutorial, unlock_chapter
+from app.ai import DoubtChatContent, QuizGradeContent, TutorialContent
+from app.main import (
+    DoubtChatRequest,
+    QuizGradeRequest,
+    TutorialRequest,
+    concept_detail,
+    demo_context,
+    doubt_chat,
+    grade_quiz,
+    student_syllabus,
+    tutorial,
+    unlock_chapter,
+)
 from app.models import (
     Base,
     Chapter,
@@ -24,6 +35,7 @@ from app.models import (
     ClassroomStudent,
     Concept,
     MisconceptionTaxonomy,
+    QuizAttempt,
     Student,
     Subject,
     Teacher,
@@ -144,6 +156,97 @@ class LearningApiTest(TestCase):
 
         self.assertEqual(exc.exception.status_code, 403)
         generate.assert_not_called()
+
+    def test_doubt_chat_uses_deterministic_scaffolding_response(self) -> None:
+        with patch(
+            "app.main.generate_doubt_response",
+            return_value=DoubtChatContent(response="What should you balance first?", response_type="guiding_question"),
+        ) as generate:
+            response = doubt_chat(
+                concept_id=self.unlocked_concept.id,
+                payload=DoubtChatRequest(message="I do not get balancing.", turn_count=1),
+                current_user=self.student_user,
+                db=self.db,
+            )
+
+        self.assertEqual(response.response_type, "guiding_question")
+        generate.assert_called_once()
+
+    def test_doubt_chat_rejects_locked_concept_before_ai_call(self) -> None:
+        with patch(
+            "app.main.generate_doubt_response",
+            return_value=DoubtChatContent(response="Hint", response_type="hint"),
+        ) as generate:
+            with self.assertRaises(HTTPException) as exc:
+                doubt_chat(
+                    concept_id=self.locked_concept.id,
+                    payload=DoubtChatRequest(message="Help", turn_count=2),
+                    current_user=self.student_user,
+                    db=self.db,
+                )
+
+        self.assertEqual(exc.exception.status_code, 403)
+        generate.assert_not_called()
+
+    def test_teacher_cannot_use_doubt_chat(self) -> None:
+        with patch(
+            "app.main.generate_doubt_response",
+            return_value=DoubtChatContent(response="Hint", response_type="hint"),
+        ) as generate:
+            with self.assertRaises(HTTPException) as exc:
+                doubt_chat(
+                    concept_id=self.unlocked_concept.id,
+                    payload=DoubtChatRequest(message="Help", turn_count=2),
+                    current_user=self.teacher_user,
+                    db=self.db,
+                )
+
+        self.assertEqual(exc.exception.status_code, 403)
+        generate.assert_not_called()
+
+    def test_quiz_grade_stores_attempt_for_student(self) -> None:
+        with patch(
+            "app.main.grade_quiz_answer",
+            return_value=QuizGradeContent(
+                is_correct=False,
+                misconception_code="BAL_SUBSCRIPT_CHANGE",
+                misconception_summary="Changes subscripts instead of coefficients.",
+                confidence=0.88,
+                follow_up_question="What should change when balancing?",
+            ),
+        ) as grade:
+            response = grade_quiz(
+                concept_id=self.unlocked_concept.id,
+                payload=QuizGradeRequest(
+                    question="Balance H2 + O2 -> H2O",
+                    student_answer="H2 + O2 -> H2O2",
+                    rubric="2H2 + O2 -> 2H2O",
+                ),
+                current_user=self.student_user,
+                db=self.db,
+            )
+
+        attempt = self.db.get(QuizAttempt, response.attempt_id)
+        self.assertIsNotNone(attempt)
+        self.assertEqual(attempt.misconception_code, "BAL_SUBSCRIPT_CHANGE")
+        self.assertEqual(attempt.mode, "quiz")
+        grade.assert_called_once()
+
+    def test_teacher_cannot_submit_quiz_attempt(self) -> None:
+        with patch(
+            "app.main.grade_quiz_answer",
+            return_value=QuizGradeContent(True, None, "Solid.", 0.95, "What is next?"),
+        ) as grade:
+            with self.assertRaises(HTTPException) as exc:
+                grade_quiz(
+                    concept_id=self.unlocked_concept.id,
+                    payload=QuizGradeRequest(question="Q", student_answer="A", rubric="R"),
+                    current_user=self.teacher_user,
+                    db=self.db,
+                )
+
+        self.assertEqual(exc.exception.status_code, 403)
+        grade.assert_not_called()
 
     def _seed_minimal_classroom(self) -> None:
         subject = Subject(name="CBSE Class 10 Science", board="CBSE", class_level="10")

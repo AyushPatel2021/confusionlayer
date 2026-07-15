@@ -6,21 +6,22 @@ ConfusionLayer is a predictive, teacher-gated AI learning platform for the OpenA
 
 ## Current Status
 
-Night 1 foundation is scaffolded in this repository:
+The live demo foundation and core learning loop are scaffolded in this repository:
 
 - Docker Compose stack with `postgres`, `backend`, and `frontend`.
-- FastAPI placeholder backend at `/api/health`.
-- Vue 3 + TypeScript + Vite + Pinia + Tailwind frontend for demo login, syllabus tree, teacher unlock, concept detail, and tutorial view.
+- FastAPI backend with auth, syllabus, chapter unlock, concept detail, tutorial, doubt chat, and quiz grading endpoints.
+- Vue 3 + TypeScript + Vite + Pinia + Tailwind frontend for demo login, syllabus tree, teacher unlock, concept detail, tutorial, doubt chat, and quiz view.
 - Static frontend container with API reverse proxy; the live VM keeps nginx on public `80/443`.
 - SQLAlchemy models for the Project Spec Section 4 schema.
 - Alembic initialized with the first migration.
 - Idempotent Night 1 seed script for the demo classroom data.
 - Deterministic mastery formula implemented as pure tested backend code.
+- Codex CLI structured-output contracts for tutorial, progressive doubt chat, and quiz grading.
 - JWT auth with HttpOnly cookie storage, bearer-token fallback, and `admin`/`teacher`/`student` roles.
 - `.env.example` for private deployment values.
 - `scripts/redeploy.sh` for one-command redeploys on the VM.
 
-The Oracle VM at `80.225.232.209` is reachable and already has Docker + Docker Compose installed. It currently runs another nginx-backed deployment for `znova.in`, so ConfusionLayer should not take over ports `80/443` until the subdomain/reverse-proxy choice below is completed.
+The Oracle VM at `80.225.232.209` is reachable, has Docker + Docker Compose installed, and serves ConfusionLayer at `https://confusionlayer.znova.in` through the VM's existing nginx reverse proxy.
 
 ## Curriculum Source Strategy
 
@@ -117,8 +118,16 @@ Core learning endpoints:
 - `POST /api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock`
 - `GET /api/concepts/{concept_id}`
 - `POST /api/concepts/{concept_id}/tutorial`
+- `POST /api/concepts/{concept_id}/doubt-chat`
+- `POST /api/concepts/{concept_id}/quiz/grade`
 
-The tutorial endpoint calls Codex CLI (`codex exec`) with the configured model, returns structured JSON `{ explanation, worked_example }`, and is protected by the per-user daily AI call limit. There is no Platform API fallback path.
+The AI endpoints call Codex CLI (`codex exec`) with the configured model and output schema, and are protected by the per-user daily AI call limit. There is no Platform API fallback path.
+
+Structured AI contracts currently wired:
+
+- Tutorial: `{ explanation, worked_example }`
+- Doubt chat: `{ response, response_type }` with response type selected deterministically by backend turn count
+- Quiz grade: `{ is_correct, misconception_code, misconception_summary, confidence, follow_up_question }`, with backend validation that `misconception_code` is null or in the fixed taxonomy
 
 ## Stack
 
@@ -294,7 +303,7 @@ For a direct local deployment that binds public `80/443`, run with:
 CONFUSIONLAYER_NGINX_PROXY=0 ./scripts/redeploy.sh
 ```
 
-## Placeholder Endpoints
+## Runtime Endpoints
 
 - Frontend: `/`
 - Backend health: `/api/health`

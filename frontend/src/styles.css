@@ -86,4 +86,40 @@ button:disabled {
   .tutorial-band {
     @apply border border-slate-200 bg-slate-50 p-5;
   }
+
+  .tool-tab {
+    @apply inline-flex min-h-10 items-center justify-center border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-emerald-400 hover:text-slate-950;
+  }
+
+  .tool-tab-active {
+    @apply border-emerald-800 bg-emerald-900 text-white hover:border-emerald-800 hover:text-white;
+  }
+
+  .empty-tool {
+    @apply border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm font-medium text-slate-500;
+  }
+
+  .chat-box {
+    @apply flex min-h-64 flex-col gap-3 border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .chat-message {
+    @apply max-w-[88%] border px-4 py-3 text-slate-800;
+  }
+
+  .chat-message-student {
+    @apply ml-auto border-emerald-200 bg-emerald-50;
+  }
+
+  .chat-message-assistant {
+    @apply mr-auto border-slate-200 bg-white;
+  }
+
+  .text-input {
+    @apply min-h-10 w-full border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100;
+  }
+
+  .text-area {
+    @apply min-h-36 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100;
+  }
 }

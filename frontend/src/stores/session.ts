@@ -57,6 +57,26 @@ interface Tutorial {
   worked_example: string;
 }
 
+interface ChatMessage {
+  role: "student" | "assistant";
+  content: string;
+  response_type?: string;
+}
+
+interface DoubtChatResponse {
+  response: string;
+  response_type: string;
+}
+
+interface QuizGrade {
+  is_correct: boolean;
+  misconception_code: string | null;
+  misconception_summary: string;
+  confidence: number;
+  follow_up_question: string;
+  attempt_id: number;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -71,6 +91,9 @@ export const useSessionStore = defineStore("session", {
     syllabus: null as Syllabus | null,
     selectedConcept: null as ConceptDetail | null,
     tutorial: null as Tutorial | null,
+    activeTool: "tutorial" as "tutorial" | "doubt" | "quiz",
+    chatMessages: [] as ChatMessage[],
+    quizGrade: null as QuizGrade | null,
     loading: "",
     error: "",
   }),
@@ -92,6 +115,8 @@ export const useSessionStore = defineStore("session", {
         localStorage.setItem(tokenKey, response.access_token);
         this.selectedConcept = null;
         this.tutorial = null;
+        this.chatMessages = [];
+        this.quizGrade = null;
         await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
@@ -146,6 +171,8 @@ export const useSessionStore = defineStore("session", {
       this.loading = `concept-${concept.id}`;
       this.error = "";
       this.tutorial = null;
+      this.chatMessages = [];
+      this.quizGrade = null;
       try {
         this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${concept.id}`, { token: this.token });
       } catch (error) {
@@ -170,12 +197,61 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async sendDoubt(message: string) {
+      if (!this.selectedConcept || !message.trim()) return;
+      this.loading = "doubt";
+      this.error = "";
+      const studentMessage: ChatMessage = { role: "student", content: message.trim() };
+      const history = [...this.chatMessages, studentMessage].map((item) => ({ role: item.role, content: item.content }));
+      this.chatMessages.push(studentMessage);
+      try {
+        const response = await api<DoubtChatResponse>(`/api/concepts/${this.selectedConcept.id}/doubt-chat`, {
+          method: "POST",
+          token: this.token,
+          body: JSON.stringify({
+            message: message.trim(),
+            history,
+            turn_count: this.chatMessages.filter((item) => item.role === "student").length,
+          }),
+        });
+        this.chatMessages.push({ role: "assistant", content: response.response, response_type: response.response_type });
+      } catch (error) {
+        this.chatMessages.pop();
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async submitQuiz(question: string, studentAnswer: string, rubric: string) {
+      if (!this.selectedConcept || !question.trim() || !studentAnswer.trim() || !rubric.trim()) return;
+      this.loading = "quiz";
+      this.error = "";
+      this.quizGrade = null;
+      try {
+        this.quizGrade = await api<QuizGrade>(`/api/concepts/${this.selectedConcept.id}/quiz/grade`, {
+          method: "POST",
+          token: this.token,
+          body: JSON.stringify({
+            question: question.trim(),
+            student_answer: studentAnswer.trim(),
+            rubric: rubric.trim(),
+          }),
+        });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
     logout() {
       this.token = "";
       this.user = null;
       this.syllabus = null;
       this.selectedConcept = null;
       this.tutorial = null;
+      this.activeTool = "tutorial";
+      this.chatMessages = [];
+      this.quizGrade = null;
       this.error = "";
       localStorage.removeItem(tokenKey);
     },

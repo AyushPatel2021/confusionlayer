@@ -22,6 +22,21 @@ class TutorialContent:
     worked_example: str
 
 
+@dataclass(frozen=True)
+class DoubtChatContent:
+    response: str
+    response_type: str
+
+
+@dataclass(frozen=True)
+class QuizGradeContent:
+    is_correct: bool
+    misconception_code: str | None
+    misconception_summary: str
+    confidence: float
+    follow_up_question: str
+
+
 def ai_daily_call_limit() -> int:
     return int(os.getenv("AI_DAILY_CALL_LIMIT", "50"))
 
@@ -61,6 +76,40 @@ def generate_tutorial(concept: Concept, reading_level: str) -> TutorialContent:
     return parse_tutorial_response(response_text)
 
 
+def generate_doubt_response(concept: Concept, message: str, history: list[dict[str, str]], turn_count: int) -> DoubtChatContent:
+    response_type = doubt_response_type(turn_count)
+    prompt = f"{_doubt_instructions(response_type)}\n\n{_doubt_input(concept, message, history, turn_count)}"
+    response_text = _run_codex_json(prompt, "doubt_chat.schema.json")
+    content = parse_doubt_response(response_text)
+    return DoubtChatContent(response=content.response, response_type=response_type)
+
+
+def grade_quiz_answer(
+    concept: Concept,
+    question: str,
+    student_answer: str,
+    rubric: str,
+    taxonomy: list[dict[str, str]],
+) -> QuizGradeContent:
+    prompt = f"{_quiz_instructions()}\n\n{_quiz_input(concept, question, student_answer, rubric, taxonomy)}"
+    response_text = _run_codex_json(prompt, "quiz_grade.schema.json")
+    content = parse_quiz_grade_response(response_text)
+    allowed_codes = {item["code"] for item in taxonomy}
+    if content.misconception_code is not None and content.misconception_code not in allowed_codes:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grader returned a code outside the taxonomy")
+    return content
+
+
+def doubt_response_type(turn_count: int) -> str:
+    if turn_count <= 1:
+        return "guiding_question"
+    if turn_count == 2:
+        return "hint"
+    if turn_count == 3:
+        return "worked_step"
+    return "explanation"
+
+
 def parse_tutorial_response(response_payload: dict[str, Any] | str) -> TutorialContent:
     if isinstance(response_payload, str):
         output_text = response_payload
@@ -79,6 +128,57 @@ def parse_tutorial_response(response_payload: dict[str, Any] | str) -> TutorialC
     if not isinstance(explanation, str) or not isinstance(worked_example, str):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tutorial response did not match the contract")
     return TutorialContent(explanation=explanation, worked_example=worked_example)
+
+
+def parse_doubt_response(response_payload: dict[str, Any] | str) -> DoubtChatContent:
+    content = _json_content(response_payload, "Doubt chat")
+    response = content.get("response")
+    response_type = content.get("response_type")
+    if not isinstance(response, str) or not isinstance(response_type, str):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Doubt chat response did not match the contract")
+    if response_type not in {"guiding_question", "hint", "worked_step", "explanation"}:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Doubt chat response_type was invalid")
+    return DoubtChatContent(response=response, response_type=response_type)
+
+
+def parse_quiz_grade_response(response_payload: dict[str, Any] | str) -> QuizGradeContent:
+    content = _json_content(response_payload, "Quiz grade")
+    is_correct = content.get("is_correct")
+    misconception_code = content.get("misconception_code")
+    misconception_summary = content.get("misconception_summary")
+    confidence = content.get("confidence")
+    follow_up_question = content.get("follow_up_question")
+    if not isinstance(is_correct, bool):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grade is_correct was invalid")
+    if misconception_code is not None and not isinstance(misconception_code, str):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grade misconception_code was invalid")
+    if not isinstance(misconception_summary, str) or not isinstance(follow_up_question, str):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grade response did not match the contract")
+    if not isinstance(confidence, int | float) or confidence < 0 or confidence > 1:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grade confidence was invalid")
+    return QuizGradeContent(
+        is_correct=is_correct,
+        misconception_code=misconception_code,
+        misconception_summary=misconception_summary,
+        confidence=float(confidence),
+        follow_up_question=follow_up_question,
+    )
+
+
+def _json_content(response_payload: dict[str, Any] | str, label: str) -> dict[str, Any]:
+    if isinstance(response_payload, str):
+        output_text = response_payload
+    else:
+        output_text = response_payload.get("output_text")
+        if not isinstance(output_text, str):
+            output_text = _extract_output_text(response_payload)
+    try:
+        content = json.loads(output_text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{label} response was not valid JSON") from exc
+    if not isinstance(content, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{label} response was not a JSON object")
+    return content
 
 
 def _run_codex_json(prompt: str, schema_filename: str) -> str:
@@ -160,6 +260,25 @@ def _tutorial_instructions() -> str:
     )
 
 
+def _doubt_instructions(response_type: str) -> str:
+    return (
+        "You are the Socratic Tutor for ConfusionLayer. Return only valid JSON with exactly these keys: "
+        "response and response_type. The response_type must be "
+        f"{response_type}. Keep the answer aligned to the provided concept. For guiding_question and hint, do not "
+        "give the final answer directly. For worked_step, show one step only. For explanation, give a concise answer "
+        "and end with one follow-up check question."
+    )
+
+
+def _quiz_instructions() -> str:
+    return (
+        "You are the Grader/Diagnostician for ConfusionLayer. Return only valid JSON with exactly these keys: "
+        "is_correct, misconception_code, misconception_summary, confidence, and follow_up_question. "
+        "The misconception_code must be null or one of the provided taxonomy codes. Do not invent new codes. "
+        "Do not compute mastery scores."
+    )
+
+
 def _tutorial_input(concept: Concept, reading_level: str) -> str:
     chapter = concept.chapter
     subject = chapter.subject
@@ -172,4 +291,42 @@ def _tutorial_input(concept: Concept, reading_level: str) -> str:
         f"Reading level: {reading_level}\n\n"
         "Generate a concise tutorial aligned to this concept. Include one simple worked example. "
         "Return JSON only: {\"explanation\": string, \"worked_example\": string}."
+    )
+
+
+def _doubt_input(concept: Concept, message: str, history: list[dict[str, str]], turn_count: int) -> str:
+    chapter = concept.chapter
+    subject = chapter.subject
+    compact_history = history[-6:]
+    return (
+        f"Board: {subject.board}\n"
+        f"Class level: {subject.class_level}\n"
+        f"Subject: {subject.name}\n"
+        f"Chapter: {chapter.title}\n"
+        f"Concept: {concept.title}\n"
+        f"Turn count: {turn_count}\n"
+        f"Recent chat history JSON: {json.dumps(compact_history, ensure_ascii=True)}\n"
+        f"Student message: {message}\n"
+    )
+
+
+def _quiz_input(
+    concept: Concept,
+    question: str,
+    student_answer: str,
+    rubric: str,
+    taxonomy: list[dict[str, str]],
+) -> str:
+    chapter = concept.chapter
+    subject = chapter.subject
+    return (
+        f"Board: {subject.board}\n"
+        f"Class level: {subject.class_level}\n"
+        f"Subject: {subject.name}\n"
+        f"Chapter: {chapter.title}\n"
+        f"Concept: {concept.title}\n"
+        f"Question: {question}\n"
+        f"Student answer: {student_answer}\n"
+        f"Rubric/correct answer: {rubric}\n"
+        f"Allowed taxonomy JSON: {json.dumps(taxonomy, ensure_ascii=True)}\n"
     )

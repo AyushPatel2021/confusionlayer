@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import type { ChapterSummary, ConceptSummary } from "./stores/session";
 import { useSessionStore } from "./stores/session";
 
 const session = useSessionStore();
+const doubtText = ref("");
+const quizAnswer = ref("");
 
 onMounted(() => {
   void session.restore();
@@ -21,6 +23,26 @@ function chapterState(chapter: ChapterSummary) {
 
 function canOpen(concept: ConceptSummary) {
   return !concept.locked && !session.loading;
+}
+
+const quizQuestion = computed(() => {
+  const title = session.selectedConcept?.title || "this concept";
+  return `Explain one key idea from ${title} in your own words.`;
+});
+
+const quizRubric = computed(() => {
+  const title = session.selectedConcept?.title || "the concept";
+  return `A correct answer should accurately describe ${title}, use relevant terms from the concept, and avoid the listed misconception patterns.`;
+});
+
+async function sendDoubt() {
+  const message = doubtText.value;
+  doubtText.value = "";
+  await session.sendDoubt(message);
+}
+
+async function submitQuiz() {
+  await session.submitQuiz(quizQuestion.value, quizAnswer.value, quizRubric.value);
 }
 </script>
 
@@ -158,15 +180,32 @@ function canOpen(concept: ConceptSummary) {
                   {{ session.selectedConcept.subject.board }} Class {{ session.selectedConcept.subject.class_level }} · {{ session.selectedConcept.subject.name }}
                 </p>
               </div>
-              <button
-                class="btn-primary"
-                :disabled="!!session.loading"
-                @click="session.generateTutorial()"
-              >
-                {{ session.loading === "tutorial" ? "Generating" : "Generate Tutorial" }}
-              </button>
             </div>
           </div>
+
+          <nav class="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': session.activeTool === 'tutorial' }"
+              @click="session.activeTool = 'tutorial'"
+            >
+              Tutorial
+            </button>
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': session.activeTool === 'doubt' }"
+              @click="session.activeTool = 'doubt'"
+            >
+              Doubt Chat
+            </button>
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': session.activeTool === 'quiz' }"
+              @click="session.activeTool = 'quiz'"
+            >
+              Quiz
+            </button>
+          </nav>
 
           <section>
             <p class="eyebrow">Fixed taxonomy</p>
@@ -178,14 +217,96 @@ function canOpen(concept: ConceptSummary) {
             </div>
           </section>
 
-          <section v-if="session.tutorial" class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-            <div class="tutorial-band">
-              <p class="eyebrow">Tutorial</p>
-              <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.explanation }}</p>
+          <section v-if="session.activeTool === 'tutorial'" class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <p class="eyebrow">Tutorial generator</p>
+              <button class="btn-primary" :disabled="!!session.loading" @click="session.generateTutorial()">
+                {{ session.loading === "tutorial" ? "Generating" : "Generate Tutorial" }}
+              </button>
             </div>
-            <div class="tutorial-band">
-              <p class="eyebrow">Worked example</p>
-              <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.worked_example }}</p>
+            <div v-if="session.tutorial" class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+              <div class="tutorial-band">
+                <p class="eyebrow">Tutorial</p>
+                <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.explanation }}</p>
+              </div>
+              <div class="tutorial-band">
+                <p class="eyebrow">Worked example</p>
+                <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.worked_example }}</p>
+              </div>
+            </div>
+            <div v-else class="empty-tool">No generated tutorial yet</div>
+          </section>
+
+          <section v-if="session.activeTool === 'doubt'" class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <p class="eyebrow">Progressive scaffolding</p>
+              <span class="badge-muted">{{ session.chatMessages.filter((item) => item.role === "student").length + 1 }} turn</span>
+            </div>
+            <div class="chat-box">
+              <div v-if="session.chatMessages.length === 0" class="empty-tool">No messages yet</div>
+              <div
+                v-for="(message, index) in session.chatMessages"
+                :key="`${message.role}-${index}`"
+                class="chat-message"
+                :class="message.role === 'student' ? 'chat-message-student' : 'chat-message-assistant'"
+              >
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {{ message.role }} <span v-if="message.response_type">· {{ message.response_type }}</span>
+                </p>
+                <p class="mt-1 whitespace-pre-line text-sm leading-6">{{ message.content }}</p>
+              </div>
+            </div>
+            <form class="flex flex-col gap-3 md:flex-row" @submit.prevent="sendDoubt">
+              <input
+                v-model="doubtText"
+                class="text-input"
+                placeholder="Ask a doubt about this concept"
+                :disabled="!!session.loading"
+              />
+              <button class="btn-primary" :disabled="!!session.loading || !doubtText.trim()">
+                {{ session.loading === "doubt" ? "Sending" : "Send" }}
+              </button>
+            </form>
+          </section>
+
+          <section v-if="session.activeTool === 'quiz'" class="space-y-4">
+            <div>
+              <p class="eyebrow">Quiz grader</p>
+              <div class="mt-3 grid gap-3 md:grid-cols-2">
+                <div class="taxonomy-item">
+                  <p class="text-xs font-semibold text-slate-500">Question</p>
+                  <p class="mt-1 text-sm leading-6 text-slate-800">{{ quizQuestion }}</p>
+                </div>
+                <div class="taxonomy-item">
+                  <p class="text-xs font-semibold text-slate-500">Rubric</p>
+                  <p class="mt-1 text-sm leading-6 text-slate-800">{{ quizRubric }}</p>
+                </div>
+              </div>
+            </div>
+            <form class="space-y-3" @submit.prevent="submitQuiz">
+              <textarea
+                v-model="quizAnswer"
+                class="text-area"
+                placeholder="Write your answer"
+                :disabled="!!session.loading || !session.isStudent"
+              />
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-slate-500">{{ session.isStudent ? "Answer as the student demo account" : "Switch to Student Demo to submit" }}</p>
+                <button class="btn-primary" :disabled="!!session.loading || !quizAnswer.trim() || !session.isStudent">
+                  {{ session.loading === "quiz" ? "Grading" : "Grade Answer" }}
+                </button>
+              </div>
+            </form>
+            <div v-if="session.quizGrade" class="tutorial-band">
+              <div class="flex flex-wrap items-center gap-2">
+                <span :class="session.quizGrade.is_correct ? 'badge' : 'badge-muted'">
+                  {{ session.quizGrade.is_correct ? "Correct" : "Needs review" }}
+                </span>
+                <span class="badge-muted">Confidence {{ Math.round(session.quizGrade.confidence * 100) }}%</span>
+                <span v-if="session.quizGrade.misconception_code" class="badge-muted">{{ session.quizGrade.misconception_code }}</span>
+              </div>
+              <p class="mt-3 text-sm leading-6 text-slate-800">{{ session.quizGrade.misconception_summary }}</p>
+              <p class="mt-3 text-sm font-semibold text-slate-950">{{ session.quizGrade.follow_up_question }}</p>
             </div>
           </section>
         </article>
