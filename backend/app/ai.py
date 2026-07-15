@@ -37,6 +37,14 @@ class QuizGradeContent:
     follow_up_question: str
 
 
+@dataclass(frozen=True)
+class TeachBackGradeContent:
+    clarity_score: float
+    accuracy_score: float
+    gap_identified: str
+    encouragement: str
+
+
 def ai_daily_call_limit() -> int:
     return int(os.getenv("AI_DAILY_CALL_LIMIT", "50"))
 
@@ -98,6 +106,12 @@ def grade_quiz_answer(
     if content.misconception_code is not None and content.misconception_code not in allowed_codes:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Quiz grader returned a code outside the taxonomy")
     return content
+
+
+def grade_teach_back(concept: Concept, correct_summary: str, student_explanation: str) -> TeachBackGradeContent:
+    prompt = f"{_teach_back_instructions()}\n\n{_teach_back_input(concept, correct_summary, student_explanation)}"
+    response_text = _run_codex_json(prompt, "teach_back.schema.json")
+    return parse_teach_back_response(response_text)
 
 
 def doubt_response_type(turn_count: int) -> str:
@@ -162,6 +176,26 @@ def parse_quiz_grade_response(response_payload: dict[str, Any] | str) -> QuizGra
         misconception_summary=misconception_summary,
         confidence=float(confidence),
         follow_up_question=follow_up_question,
+    )
+
+
+def parse_teach_back_response(response_payload: dict[str, Any] | str) -> TeachBackGradeContent:
+    content = _json_content(response_payload, "Teach-back grade")
+    clarity_score = content.get("clarity_score")
+    accuracy_score = content.get("accuracy_score")
+    gap_identified = content.get("gap_identified")
+    encouragement = content.get("encouragement")
+    if not isinstance(clarity_score, int | float) or clarity_score < 0 or clarity_score > 1:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Teach-back clarity_score was invalid")
+    if not isinstance(accuracy_score, int | float) or accuracy_score < 0 or accuracy_score > 1:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Teach-back accuracy_score was invalid")
+    if not isinstance(gap_identified, str) or not isinstance(encouragement, str):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Teach-back response did not match the contract")
+    return TeachBackGradeContent(
+        clarity_score=float(clarity_score),
+        accuracy_score=float(accuracy_score),
+        gap_identified=gap_identified,
+        encouragement=encouragement,
     )
 
 
@@ -279,6 +313,14 @@ def _quiz_instructions() -> str:
     )
 
 
+def _teach_back_instructions() -> str:
+    return (
+        "You are the Teach-Back Grader for ConfusionLayer. Return only valid JSON with exactly these keys: "
+        "clarity_score, accuracy_score, gap_identified, and encouragement. Scores must be numbers from 0 to 1. "
+        "Grade whether the student can explain the concept in their own words. Do not compute mastery scores."
+    )
+
+
 def _tutorial_input(concept: Concept, reading_level: str) -> str:
     chapter = concept.chapter
     subject = chapter.subject
@@ -329,4 +371,18 @@ def _quiz_input(
         f"Student answer: {student_answer}\n"
         f"Rubric/correct answer: {rubric}\n"
         f"Allowed taxonomy JSON: {json.dumps(taxonomy, ensure_ascii=True)}\n"
+    )
+
+
+def _teach_back_input(concept: Concept, correct_summary: str, student_explanation: str) -> str:
+    chapter = concept.chapter
+    subject = chapter.subject
+    return (
+        f"Board: {subject.board}\n"
+        f"Class level: {subject.class_level}\n"
+        f"Subject: {subject.name}\n"
+        f"Chapter: {chapter.title}\n"
+        f"Concept: {concept.title}\n"
+        f"Correct concept summary/rubric: {correct_summary}\n"
+        f"Student explanation: {student_explanation}\n"
     )

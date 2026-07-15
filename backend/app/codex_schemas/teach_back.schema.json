@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["clarity_score", "accuracy_score", "gap_identified", "encouragement"],
+  "properties": {
+    "clarity_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "accuracy_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "gap_identified": {
+      "type": "string"
+    },
+    "encouragement": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

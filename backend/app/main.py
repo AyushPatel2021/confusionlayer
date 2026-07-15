@@ -6,7 +6,14 @@ from sqlalchemy import select
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.ai import check_and_increment_ai_usage, codex_model, generate_doubt_response, generate_tutorial, grade_quiz_answer
+from app.ai import (
+    check_and_increment_ai_usage,
+    codex_model,
+    generate_doubt_response,
+    generate_tutorial,
+    grade_quiz_answer,
+    grade_teach_back,
+)
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
@@ -22,7 +29,18 @@ from app.auth import (
     user_response,
 )
 from app.db import get_db
-from app.models import Chapter, ChapterUnlock, Classroom, ClassroomStudent, Concept, MisconceptionTaxonomy, QuizAttempt, Subject, User
+from app.models import (
+    Chapter,
+    ChapterUnlock,
+    Classroom,
+    ClassroomStudent,
+    Concept,
+    MisconceptionTaxonomy,
+    QuizAttempt,
+    Subject,
+    TeachBackAttempt,
+    User,
+)
 
 app = FastAPI(title="ConfusionLayer API")
 
@@ -126,6 +144,19 @@ class QuizGradeResponse(BaseModel):
     misconception_summary: str
     confidence: float
     follow_up_question: str
+    attempt_id: int
+
+
+class TeachBackGradeRequest(BaseModel):
+    student_explanation: str
+    correct_summary: str
+
+
+class TeachBackGradeResponse(BaseModel):
+    clarity_score: float
+    accuracy_score: float
+    gap_identified: str
+    encouragement: str
     attempt_id: int
 
 
@@ -345,6 +376,41 @@ def grade_quiz(
         misconception_summary=grade.misconception_summary,
         confidence=grade.confidence,
         follow_up_question=grade.follow_up_question,
+        attempt_id=attempt.id,
+    )
+
+
+@app.post("/api/concepts/{concept_id}/teach-back/grade", response_model=TeachBackGradeResponse)
+def grade_teach_back_endpoint(
+    concept_id: int,
+    payload: TeachBackGradeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TeachBackGradeResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can submit teach-back attempts")
+
+    concept = _get_accessible_concept(db, current_user, concept_id)
+    check_and_increment_ai_usage(db, current_user)
+    grade = grade_teach_back(concept, payload.correct_summary, payload.student_explanation)
+
+    attempt = TeachBackAttempt(
+        student_id=current_user.student_id,
+        concept_id=concept.id,
+        student_explanation=payload.student_explanation,
+        clarity_score=grade.clarity_score,
+        accuracy_score=grade.accuracy_score,
+        gpt_feedback=f"Gap: {grade.gap_identified}\nEncouragement: {grade.encouragement}",
+    )
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+
+    return TeachBackGradeResponse(
+        clarity_score=grade.clarity_score,
+        accuracy_score=grade.accuracy_score,
+        gap_identified=grade.gap_identified,
+        encouragement=grade.encouragement,
         attempt_id=attempt.id,
     )
 

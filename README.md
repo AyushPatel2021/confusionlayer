@@ -120,6 +120,7 @@ Core learning endpoints:
 - `POST /api/concepts/{concept_id}/tutorial`
 - `POST /api/concepts/{concept_id}/doubt-chat`
 - `POST /api/concepts/{concept_id}/quiz/grade`
+- `POST /api/concepts/{concept_id}/teach-back/grade`
 
 The AI endpoints call Codex CLI (`codex exec`) with the configured model and output schema, and are protected by the per-user daily AI call limit. There is no Platform API fallback path.
 
@@ -128,6 +129,7 @@ Structured AI contracts currently wired:
 - Tutorial: `{ explanation, worked_example }`
 - Doubt chat: `{ response, response_type }` with response type selected deterministically by backend turn count
 - Quiz grade: `{ is_correct, misconception_code, misconception_summary, confidence, follow_up_question }`, with backend validation that `misconception_code` is null or in the fixed taxonomy
+- Teach-back grade: `{ clarity_score, accuracy_score, gap_identified, encouragement }`, persisted to `TeachBackAttempt`
 
 ## Stack
 

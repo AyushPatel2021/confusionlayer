@@ -77,6 +77,14 @@ interface QuizGrade {
   attempt_id: number;
 }
 
+interface TeachBackGrade {
+  clarity_score: number;
+  accuracy_score: number;
+  gap_identified: string;
+  encouragement: string;
+  attempt_id: number;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -91,9 +99,10 @@ export const useSessionStore = defineStore("session", {
     syllabus: null as Syllabus | null,
     selectedConcept: null as ConceptDetail | null,
     tutorial: null as Tutorial | null,
-    activeTool: "tutorial" as "tutorial" | "doubt" | "quiz",
+    activeTool: "tutorial" as "tutorial" | "doubt" | "quiz" | "teach_back",
     chatMessages: [] as ChatMessage[],
     quizGrade: null as QuizGrade | null,
+    teachBackGrade: null as TeachBackGrade | null,
     loading: "",
     error: "",
   }),
@@ -117,6 +126,7 @@ export const useSessionStore = defineStore("session", {
         this.tutorial = null;
         this.chatMessages = [];
         this.quizGrade = null;
+        this.teachBackGrade = null;
         await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
@@ -173,6 +183,7 @@ export const useSessionStore = defineStore("session", {
       this.tutorial = null;
       this.chatMessages = [];
       this.quizGrade = null;
+      this.teachBackGrade = null;
       try {
         this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${concept.id}`, { token: this.token });
       } catch (error) {
@@ -243,6 +254,26 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async submitTeachBack(studentExplanation: string, correctSummary: string) {
+      if (!this.selectedConcept || !studentExplanation.trim() || !correctSummary.trim()) return;
+      this.loading = "teach-back";
+      this.error = "";
+      this.teachBackGrade = null;
+      try {
+        this.teachBackGrade = await api<TeachBackGrade>(`/api/concepts/${this.selectedConcept.id}/teach-back/grade`, {
+          method: "POST",
+          token: this.token,
+          body: JSON.stringify({
+            student_explanation: studentExplanation.trim(),
+            correct_summary: correctSummary.trim(),
+          }),
+        });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
     logout() {
       this.token = "";
       this.user = null;
@@ -252,6 +283,7 @@ export const useSessionStore = defineStore("session", {
       this.activeTool = "tutorial";
       this.chatMessages = [];
       this.quizGrade = null;
+      this.teachBackGrade = null;
       this.error = "";
       localStorage.removeItem(tokenKey);
     },

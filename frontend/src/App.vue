@@ -7,6 +7,7 @@ import { useSessionStore } from "./stores/session";
 const session = useSessionStore();
 const doubtText = ref("");
 const quizAnswer = ref("");
+const teachBackText = ref("");
 
 onMounted(() => {
   void session.restore();
@@ -35,6 +36,12 @@ const quizRubric = computed(() => {
   return `A correct answer should accurately describe ${title}, use relevant terms from the concept, and avoid the listed misconception patterns.`;
 });
 
+const teachBackSummary = computed(() => {
+  const title = session.selectedConcept?.title || "the concept";
+  const taxonomy = session.selectedConcept?.taxonomy.map((item) => `${item.code}: ${item.description}`).join("; ") || "No misconception taxonomy loaded.";
+  return `A strong explanation of ${title} should define the idea, connect it to the chapter context, and avoid these misconception patterns: ${taxonomy}`;
+});
+
 async function sendDoubt() {
   const message = doubtText.value;
   doubtText.value = "";
@@ -43,6 +50,10 @@ async function sendDoubt() {
 
 async function submitQuiz() {
   await session.submitQuiz(quizQuestion.value, quizAnswer.value, quizRubric.value);
+}
+
+async function submitTeachBack() {
+  await session.submitTeachBack(teachBackText.value, teachBackSummary.value);
 }
 </script>
 
@@ -205,6 +216,13 @@ async function submitQuiz() {
             >
               Quiz
             </button>
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': session.activeTool === 'teach_back' }"
+              @click="session.activeTool = 'teach_back'"
+            >
+              Teach-Back
+            </button>
           </nav>
 
           <section>
@@ -307,6 +325,37 @@ async function submitQuiz() {
               </div>
               <p class="mt-3 text-sm leading-6 text-slate-800">{{ session.quizGrade.misconception_summary }}</p>
               <p class="mt-3 text-sm font-semibold text-slate-950">{{ session.quizGrade.follow_up_question }}</p>
+            </div>
+          </section>
+
+          <section v-if="session.activeTool === 'teach_back'" class="space-y-4">
+            <div>
+              <p class="eyebrow">Teach-back grader</p>
+              <div class="mt-3 tutorial-band">
+                <p class="text-sm leading-6 text-slate-800">{{ teachBackSummary }}</p>
+              </div>
+            </div>
+            <form class="space-y-3" @submit.prevent="submitTeachBack">
+              <textarea
+                v-model="teachBackText"
+                class="text-area"
+                placeholder="Explain this concept in your own words"
+                :disabled="!!session.loading || !session.isStudent"
+              />
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-slate-500">{{ session.isStudent ? "Teach back as the student demo account" : "Switch to Student Demo to submit" }}</p>
+                <button class="btn-primary" :disabled="!!session.loading || !teachBackText.trim() || !session.isStudent">
+                  {{ session.loading === "teach-back" ? "Grading" : "Grade Teach-Back" }}
+                </button>
+              </div>
+            </form>
+            <div v-if="session.teachBackGrade" class="tutorial-band">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="badge-muted">Clarity {{ Math.round(session.teachBackGrade.clarity_score * 100) }}%</span>
+                <span class="badge-muted">Accuracy {{ Math.round(session.teachBackGrade.accuracy_score * 100) }}%</span>
+              </div>
+              <p class="mt-3 text-sm leading-6 text-slate-800">{{ session.teachBackGrade.gap_identified }}</p>
+              <p class="mt-3 text-sm font-semibold text-slate-950">{{ session.teachBackGrade.encouragement }}</p>
             </div>
           </section>
         </article>

@@ -14,15 +14,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth import SignupRequest, create_user
-from app.ai import DoubtChatContent, QuizGradeContent, TutorialContent
+from app.ai import DoubtChatContent, QuizGradeContent, TeachBackGradeContent, TutorialContent
 from app.main import (
     DoubtChatRequest,
     QuizGradeRequest,
+    TeachBackGradeRequest,
     TutorialRequest,
     concept_detail,
     demo_context,
     doubt_chat,
     grade_quiz,
+    grade_teach_back_endpoint,
     student_syllabus,
     tutorial,
     unlock_chapter,
@@ -38,6 +40,7 @@ from app.models import (
     QuizAttempt,
     Student,
     Subject,
+    TeachBackAttempt,
     Teacher,
 )
 from sqlalchemy import func, select
@@ -241,6 +244,48 @@ class LearningApiTest(TestCase):
                 grade_quiz(
                     concept_id=self.unlocked_concept.id,
                     payload=QuizGradeRequest(question="Q", student_answer="A", rubric="R"),
+                    current_user=self.teacher_user,
+                    db=self.db,
+                )
+
+        self.assertEqual(exc.exception.status_code, 403)
+        grade.assert_not_called()
+
+    def test_teach_back_grade_stores_attempt_for_student(self) -> None:
+        with patch(
+            "app.main.grade_teach_back",
+            return_value=TeachBackGradeContent(
+                clarity_score=0.72,
+                accuracy_score=0.61,
+                gap_identified="Misses conservation of atoms.",
+                encouragement="Good start; explain atom count next.",
+            ),
+        ) as grade:
+            response = grade_teach_back_endpoint(
+                concept_id=self.unlocked_concept.id,
+                payload=TeachBackGradeRequest(
+                    student_explanation="Balancing means making the equation look equal.",
+                    correct_summary="Balancing keeps atom counts equal on both sides using coefficients.",
+                ),
+                current_user=self.student_user,
+                db=self.db,
+            )
+
+        attempt = self.db.get(TeachBackAttempt, response.attempt_id)
+        self.assertIsNotNone(attempt)
+        self.assertEqual(attempt.clarity_score, 0.72)
+        self.assertIn("Misses conservation", attempt.gpt_feedback)
+        grade.assert_called_once()
+
+    def test_teacher_cannot_submit_teach_back_attempt(self) -> None:
+        with patch(
+            "app.main.grade_teach_back",
+            return_value=TeachBackGradeContent(0.9, 0.9, "None.", "Clear."),
+        ) as grade:
+            with self.assertRaises(HTTPException) as exc:
+                grade_teach_back_endpoint(
+                    concept_id=self.unlocked_concept.id,
+                    payload=TeachBackGradeRequest(student_explanation="A", correct_summary="B"),
                     current_user=self.teacher_user,
                     db=self.db,
                 )

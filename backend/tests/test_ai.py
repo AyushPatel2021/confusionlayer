@@ -19,6 +19,7 @@ from app.ai import (
     grade_quiz_answer,
     parse_doubt_response,
     parse_quiz_grade_response,
+    parse_teach_back_response,
     parse_tutorial_response,
 )
 from app.auth import SignupRequest, create_user
@@ -103,6 +104,15 @@ class AiUsageTest(TestCase):
 
         self.assertEqual(grade.misconception_code, "BAL_SUBSCRIPT_CHANGE")
         self.assertAlmostEqual(grade.confidence, 0.86)
+
+    def test_parse_teach_back_response_accepts_contract(self) -> None:
+        grade = parse_teach_back_response(
+            '{"clarity_score": 0.78, "accuracy_score": 0.64, '
+            '"gap_identified": "Misses conservation of atoms.", "encouragement": "Good start; tighten the atom count."}'
+        )
+
+        self.assertAlmostEqual(grade.clarity_score, 0.78)
+        self.assertAlmostEqual(grade.accuracy_score, 0.64)
 
     def test_grade_quiz_answer_rejects_code_outside_taxonomy(self) -> None:
         class SubjectStub:
