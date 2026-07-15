@@ -10,7 +10,7 @@ Night 1 foundation is scaffolded in this repository:
 
 - Docker Compose stack with `postgres`, `backend`, and `frontend`.
 - FastAPI placeholder backend at `/api/health`.
-- Vue 3 + TypeScript + Vite + Pinia + Vue Router + Tailwind placeholder frontend.
+- Vue 3 + TypeScript + Vite + Pinia + Tailwind frontend for demo login, syllabus tree, teacher unlock, concept detail, and tutorial view.
 - Static frontend container with API reverse proxy; the live VM keeps nginx on public `80/443`.
 - SQLAlchemy models for the Project Spec Section 4 schema.
 - Alembic initialized with the first migration.

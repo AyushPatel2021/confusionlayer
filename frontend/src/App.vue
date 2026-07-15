@@ -1,28 +1,199 @@
-<template>
-  <main class="min-h-screen bg-[#f7f7f2] text-[#17201c]">
-    <section class="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-12">
-      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#596b5d]">OpenAI Build Week - Education Track</p>
-      <h1 class="mt-4 max-w-3xl text-5xl font-semibold leading-tight md:text-7xl">ConfusionLayer</h1>
-      <p class="mt-5 max-w-2xl text-xl leading-8 text-[#38423b]">
-        AI clears the confusion. Teachers lead the learning.
-      </p>
+<script setup lang="ts">
+import { computed, onMounted } from "vue";
 
-      <div class="mt-10 grid gap-4 md:grid-cols-3">
-        <div class="border border-[#d5d8cc] bg-white p-5">
-          <h2 class="text-lg font-semibold">Teacher-gated</h2>
-          <p class="mt-2 text-sm leading-6 text-[#4f5b52]">Chapters unlock per classroom, not globally.</p>
+import type { ChapterSummary, ConceptSummary } from "./stores/session";
+import { useSessionStore } from "./stores/session";
+
+const session = useSessionStore();
+
+onMounted(() => {
+  void session.restore();
+});
+
+const unlockedCount = computed(() => session.syllabus?.chapters.filter((chapter) => !chapter.locked).length || 0);
+const totalConcepts = computed(
+  () => session.syllabus?.chapters.reduce((total, chapter) => total + chapter.concepts.length, 0) || 0,
+);
+
+function chapterState(chapter: ChapterSummary) {
+  return chapter.locked ? "Locked" : "Unlocked";
+}
+
+function canOpen(concept: ConceptSummary) {
+  return !concept.locked && !session.loading;
+}
+</script>
+
+<template>
+  <main class="min-h-screen bg-slate-50 text-slate-950">
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">ConfusionLayer</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-normal">Teacher-gated learning console</h1>
         </div>
-        <div class="border border-[#d5d8cc] bg-white p-5">
-          <h2 class="text-lg font-semibold">Forecast-first</h2>
-          <p class="mt-2 text-sm leading-6 text-[#4f5b52]">Prerequisite mastery decay predicts tomorrow's confusion.</p>
-        </div>
-        <div class="border border-[#d5d8cc] bg-white p-5">
-          <h2 class="text-lg font-semibold">Teach-back ready</h2>
-          <p class="mt-2 text-sm leading-6 text-[#4f5b52]">Students explain concepts in their own words.</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            class="btn-primary"
+            :disabled="!!session.loading"
+            @click="session.demoLogin('teacher')"
+          >
+            Teacher Demo
+          </button>
+          <button
+            class="btn-secondary"
+            :disabled="!!session.loading"
+            @click="session.demoLogin('student')"
+          >
+            Student Demo
+          </button>
+          <button v-if="session.user" class="btn-ghost" :disabled="!!session.loading" @click="session.logout()">
+            Sign Out
+          </button>
         </div>
       </div>
+    </header>
 
-      <p class="mt-10 text-sm text-[#596b5d]">Night 1 deployment placeholder is live when this page loads through Caddy.</p>
+    <section class="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <aside class="space-y-5">
+        <div class="panel">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="eyebrow">Session</p>
+              <h2 class="panel-title">{{ session.user?.name || "Choose a demo role" }}</h2>
+            </div>
+            <span v-if="session.user" class="badge">{{ session.user.role }}</span>
+          </div>
+          <dl v-if="session.syllabus" class="mt-5 grid grid-cols-2 gap-3">
+            <div class="metric">
+              <dt>Classroom</dt>
+              <dd>{{ session.syllabus.classroom.name }}</dd>
+            </div>
+            <div class="metric">
+              <dt>Chapters</dt>
+              <dd>{{ unlockedCount }}/{{ session.syllabus.chapters.length }}</dd>
+            </div>
+            <div class="metric col-span-2">
+              <dt>Subject</dt>
+              <dd>{{ session.syllabus.classroom.subject.board }} {{ session.syllabus.classroom.subject.class_level }} · {{ session.syllabus.classroom.subject.name }}</dd>
+            </div>
+          </dl>
+          <p v-else class="mt-4 text-sm leading-6 text-slate-600">No active session</p>
+        </div>
+
+        <div v-if="session.syllabus" class="panel">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="eyebrow">Syllabus</p>
+              <h2 class="panel-title">{{ totalConcepts }} concepts</h2>
+            </div>
+            <button class="btn-ghost" :disabled="!!session.loading" @click="session.loadSyllabus()">Refresh</button>
+          </div>
+
+          <div class="mt-5 space-y-3">
+            <section v-for="chapter in session.syllabus.chapters" :key="chapter.id" class="chapter-block">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-medium text-slate-500">Chapter {{ chapter.order }}</p>
+                  <h3 class="text-sm font-semibold leading-5">{{ chapter.title }}</h3>
+                </div>
+                <span :class="chapter.locked ? 'badge-muted' : 'badge'">{{ chapterState(chapter) }}</span>
+              </div>
+
+              <button
+                v-if="session.isTeacher && chapter.locked"
+                class="mt-3 w-full btn-secondary"
+                :disabled="session.loading === `unlock-${chapter.id}`"
+                @click="session.unlockChapter(chapter.id)"
+              >
+                {{ session.loading === `unlock-${chapter.id}` ? "Unlocking" : "Unlock Chapter" }}
+              </button>
+
+              <div class="mt-3 space-y-2">
+                <button
+                  v-for="concept in chapter.concepts"
+                  :key="concept.id"
+                  class="concept-row"
+                  :class="{ 'concept-row-active': session.selectedConcept?.id === concept.id }"
+                  :disabled="!canOpen(concept)"
+                  @click="session.openConcept(concept)"
+                >
+                  <span>{{ concept.title }}</span>
+                  <span class="text-xs text-slate-500">{{ concept.locked ? "Locked" : "Open" }}</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel min-h-[620px]">
+        <div v-if="session.error" class="mb-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {{ session.error }}
+        </div>
+
+        <div v-if="!session.user" class="flex min-h-[520px] items-center justify-center">
+          <div class="max-w-xl text-center">
+            <p class="eyebrow justify-center">Live demo</p>
+            <h2 class="mt-2 text-3xl font-semibold">Start with teacher or student mode</h2>
+            <p class="mt-4 text-base leading-7 text-slate-600">Seeded CBSE Class 10 Science classroom</p>
+          </div>
+        </div>
+
+        <div v-else-if="!session.selectedConcept" class="flex min-h-[520px] items-center justify-center">
+          <div class="max-w-xl text-center">
+            <p class="eyebrow justify-center">Classroom loaded</p>
+            <h2 class="mt-2 text-3xl font-semibold">Select an unlocked concept</h2>
+            <p class="mt-4 text-base leading-7 text-slate-600">{{ session.syllabus?.classroom.name }}</p>
+          </div>
+        </div>
+
+        <article v-else class="space-y-6">
+          <div class="border-b border-slate-200 pb-5">
+            <p class="eyebrow">{{ session.selectedConcept.chapter_title }}</p>
+            <div class="mt-2 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 class="text-3xl font-semibold">{{ session.selectedConcept.title }}</h2>
+                <p class="mt-2 text-sm text-slate-600">
+                  {{ session.selectedConcept.subject.board }} Class {{ session.selectedConcept.subject.class_level }} · {{ session.selectedConcept.subject.name }}
+                </p>
+              </div>
+              <button
+                class="btn-primary"
+                :disabled="!!session.loading"
+                @click="session.generateTutorial()"
+              >
+                {{ session.loading === "tutorial" ? "Generating" : "Generate Tutorial" }}
+              </button>
+            </div>
+          </div>
+
+          <section>
+            <p class="eyebrow">Fixed taxonomy</p>
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <div v-for="item in session.selectedConcept.taxonomy" :key="item.code" class="taxonomy-item">
+                <p class="text-xs font-semibold text-emerald-800">{{ item.code }}</p>
+                <p class="mt-1 text-sm leading-6 text-slate-700">{{ item.description }}</p>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="session.tutorial" class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+            <div class="tutorial-band">
+              <p class="eyebrow">Tutorial</p>
+              <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.explanation }}</p>
+            </div>
+            <div class="tutorial-band">
+              <p class="eyebrow">Worked example</p>
+              <p class="mt-3 whitespace-pre-line text-base leading-8 text-slate-800">{{ session.tutorial.worked_example }}</p>
+            </div>
+          </section>
+        </article>
+      </section>
     </section>
+
+    <footer class="border-t border-slate-200 bg-white px-5 py-4 text-center text-xs leading-5 text-slate-500">
+      ConfusionLayer is an independent educational prototype and is not affiliated with or endorsed by CBSE or NCERT.
+    </footer>
   </main>
 </template>
