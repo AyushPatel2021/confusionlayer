@@ -29,6 +29,7 @@ from app.auth import (
     user_response,
 )
 from app.db import get_db
+from app.forecast import recompute_classroom_forecasts
 from app.models import (
     Chapter,
     ChapterUnlock,
@@ -160,6 +161,30 @@ class TeachBackGradeResponse(BaseModel):
     attempt_id: int
 
 
+class ForecastContributionResponse(BaseModel):
+    concept_id: int
+    title: str
+    effective_mastery: float
+    contribution_weight: float
+    difficulty_component: float
+    distance: int
+
+
+class ForecastRecordResponse(BaseModel):
+    id: int
+    student_id: int
+    concept_id: int
+    predicted_difficulty: float
+    contributing_concepts: list[ForecastContributionResponse]
+    computed_at: datetime
+
+
+class ForecastRecomputeResponse(BaseModel):
+    classroom_id: int
+    forecast_count: int
+    forecasts: list[ForecastRecordResponse]
+
+
 @app.get("/api/health")
 def health() -> dict[str, str | bool | int]:
     return {
@@ -285,6 +310,46 @@ def unlock_chapter(
         chapter_id=unlock.chapter_id,
         unlocked_by=unlock.unlocked_by,
         unlocked_at=unlock.unlocked_at,
+    )
+
+
+@app.post("/api/teacher/classrooms/{classroom_id}/forecasts/recompute", response_model=ForecastRecomputeResponse)
+def recompute_forecasts(
+    classroom_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ForecastRecomputeResponse:
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    if current_user.role == "student" or (current_user.role == "teacher" and classroom.teacher_id != current_user.teacher_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to recompute forecasts for this classroom")
+
+    records = recompute_classroom_forecasts(db, classroom_id)
+    return ForecastRecomputeResponse(
+        classroom_id=classroom_id,
+        forecast_count=len(records),
+        forecasts=[
+            ForecastRecordResponse(
+                id=record.id,
+                student_id=record.student_id,
+                concept_id=record.concept_id,
+                predicted_difficulty=record.predicted_difficulty,
+                contributing_concepts=[
+                    ForecastContributionResponse(
+                        concept_id=int(item["concept_id"]),
+                        title=str(item["title"]),
+                        effective_mastery=float(item["effective_mastery"]),
+                        contribution_weight=float(item["contribution_weight"]),
+                        difficulty_component=float(item["difficulty_component"]),
+                        distance=int(item["distance"]),
+                    )
+                    for item in record.contributing_concepts
+                ],
+                computed_at=record.computed_at,
+            )
+            for record in records
+        ],
     )
 
 

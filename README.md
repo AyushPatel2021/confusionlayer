@@ -121,6 +121,7 @@ Core learning endpoints:
 - `POST /api/concepts/{concept_id}/doubt-chat`
 - `POST /api/concepts/{concept_id}/quiz/grade`
 - `POST /api/concepts/{concept_id}/teach-back/grade`
+- `POST /api/teacher/classrooms/{classroom_id}/forecasts/recompute`
 
 The AI endpoints call Codex CLI (`codex exec`) with the configured model and output schema, and are protected by the per-user daily AI call limit. There is no Platform API fallback path.
 
@@ -130,6 +131,11 @@ Structured AI contracts currently wired:
 - Doubt chat: `{ response, response_type }` with response type selected deterministically by backend turn count
 - Quiz grade: `{ is_correct, misconception_code, misconception_summary, confidence, follow_up_question }`, with backend validation that `misconception_code` is null or in the fixed taxonomy
 - Teach-back grade: `{ clarity_score, accuracy_score, gap_identified, encouragement }`, persisted to `TeachBackAttempt`
+
+Deterministic backend engines currently wired:
+
+- Mastery formula: computes learner mastery from quiz/open-answer/misconception/retention signals.
+- Forecast engine: computes upcoming concept difficulty from prerequisite mastery decay and stores `ForecastRecord` rows. GPT does not compute the forecast number.
 
 ## Stack
 

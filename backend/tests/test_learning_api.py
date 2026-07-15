@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime, timezone
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from app.main import (
     doubt_chat,
     grade_quiz,
     grade_teach_back_endpoint,
+    recompute_forecasts,
     student_syllabus,
     tutorial,
     unlock_chapter,
@@ -36,6 +38,9 @@ from app.models import (
     Classroom,
     ClassroomStudent,
     Concept,
+    ConceptEdge,
+    ForecastRecord,
+    MasteryRecord,
     MisconceptionTaxonomy,
     QuizAttempt,
     Student,
@@ -293,6 +298,42 @@ class LearningApiTest(TestCase):
         self.assertEqual(exc.exception.status_code, 403)
         grade.assert_not_called()
 
+    def test_teacher_can_recompute_forecasts_for_classroom(self) -> None:
+        response = recompute_forecasts(classroom_id=self.classroom.id, current_user=self.teacher_user, db=self.db)
+        stored_count = self.db.scalar(select(func.count(ForecastRecord.id)))
+
+        self.assertEqual(response.classroom_id, self.classroom.id)
+        self.assertEqual(response.forecast_count, 1)
+        self.assertEqual(stored_count, 1)
+        self.assertEqual(response.forecasts[0].concept_id, self.locked_concept.id)
+        self.assertGreater(response.forecasts[0].predicted_difficulty, 0)
+
+    def test_recompute_forecasts_replaces_existing_records(self) -> None:
+        first = recompute_forecasts(classroom_id=self.classroom.id, current_user=self.teacher_user, db=self.db)
+        second = recompute_forecasts(classroom_id=self.classroom.id, current_user=self.teacher_user, db=self.db)
+        stored_count = self.db.scalar(select(func.count(ForecastRecord.id)))
+
+        self.assertEqual(first.forecast_count, 1)
+        self.assertEqual(second.forecast_count, 1)
+        self.assertEqual(stored_count, 1)
+
+    def test_recompute_forecasts_clears_stale_records_when_no_upcoming_concepts_remain(self) -> None:
+        recompute_forecasts(classroom_id=self.classroom.id, current_user=self.teacher_user, db=self.db)
+        self.db.add(ChapterUnlock(classroom_id=self.classroom.id, chapter_id=self.locked_chapter.id, unlocked_by=self.teacher.id))
+        self.db.commit()
+
+        response = recompute_forecasts(classroom_id=self.classroom.id, current_user=self.teacher_user, db=self.db)
+        stored_count = self.db.scalar(select(func.count(ForecastRecord.id)))
+
+        self.assertEqual(response.forecast_count, 0)
+        self.assertEqual(stored_count, 0)
+
+    def test_student_cannot_recompute_forecasts(self) -> None:
+        with self.assertRaises(HTTPException) as exc:
+            recompute_forecasts(classroom_id=self.classroom.id, current_user=self.student_user, db=self.db)
+
+        self.assertEqual(exc.exception.status_code, 403)
+
     def _seed_minimal_classroom(self) -> None:
         subject = Subject(name="CBSE Class 10 Science", board="CBSE", class_level="10")
         teacher = Teacher(name="Teacher One")
@@ -322,6 +363,20 @@ class LearningApiTest(TestCase):
             )
         )
         self.db.add(ChapterUnlock(classroom_id=classroom.id, chapter_id=unlocked_chapter.id, unlocked_by=teacher.id))
+        self.db.add(ConceptEdge(concept_id=locked_concept.id, prerequisite_concept_id=unlocked_concept.id, weight=1.0))
+        self.db.add(
+            MasteryRecord(
+                student_id=student.id,
+                concept_id=unlocked_concept.id,
+                quiz_accuracy_score=0.7,
+                open_answer_score=0.6,
+                misconception_recurrence=0.2,
+                retention_score=0.8,
+                computed_mastery=0.68,
+                last_reviewed_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                next_review_date=date(2026, 7, 20),
+            )
+        )
         self.db.commit()
 
         self.subject = subject
