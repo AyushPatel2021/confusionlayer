@@ -318,13 +318,30 @@ CONFUSIONLAYER_NGINX_PROXY=0 ./scripts/redeploy.sh
 
 ## Evaluation Table
 
-Fill this only with real results after the fixed test set is written and run.
+Fixed test set lives in `backend/app/eval/` (30 grader cases: 10 correct, 10
+partial, 10 misconception; 5 off-topic and 5 turn-1-leak doubt cases). Scoring
+is pure and unit-tested with mocks; the live runner calls the real Codex-backed
+grader/tutor. Run it inside the backend container:
 
-| Metric | Result |
+```bash
+# full set (~40 live Codex calls)
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml exec backend python -m app.eval.run_eval
+# capped sample (cheap smoke) — N cases per category
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml exec backend python -m app.eval.run_eval --sample 2
+```
+
+**Results below are from a live `--sample 2` run (10 Codex calls)**, capped to
+protect the hackathon Codex budget. Numbers are real for the sample run; the
+denominators are the sample sizes, not the full 30/5. The full run is one command
+away (above). Doubt-chat rows use a turn-1 scaffolding heuristic — confirm
+borderline cases by eye.
+
+| Metric | Result (sample) |
 |---|---:|
-| Structured output success | TBD / 30 |
-| Correctness classification accuracy | TBD / 30 |
-| Misconception code match accuracy | TBD / 30 |
-| Out-of-scope redirection | TBD / 5 |
-| Turn-1 direct-answer leakage | TBD / 5 |
-| Forecast engine sensitivity check | TBD |
+| Structured output success | 6 / 6 |
+| Correctness classification accuracy (correct + misconception) | 4 / 4 |
+| Partial answers handled gracefully | 2 / 2 |
+| Misconception code match accuracy | 2 / 2 |
+| Out-of-scope redirection (heuristic) | 2 / 2 |
+| Turn-1 direct-answer leakage (target 0) | 0 / 2 |
+| Forecast engine sensitivity check | pass (unit test, Section 8) |
