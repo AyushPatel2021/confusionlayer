@@ -3,30 +3,37 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import ConfusionBrief from "./components/ConfusionBrief.vue";
 import ForecastBrief from "./components/ForecastBrief.vue";
+import Progress from "./components/Progress.vue";
+import SelfStart from "./components/SelfStart.vue";
 import type { ChapterSummary, ConceptSummary } from "./stores/session";
 import { useSessionStore } from "./stores/session";
+
+type MainView = "console" | "insights" | "selfstart" | "progress";
 
 const session = useSessionStore();
 const doubtText = ref("");
 const quizAnswer = ref("");
 const teachBackText = ref("");
-const teacherView = ref<"console" | "insights">("console");
+const mainView = ref<MainView>("console");
 
 onMounted(() => {
   void session.restore();
 });
 
-function openInsights() {
-  teacherView.value = "insights";
-  if (!session.forecastBrief) void session.loadForecastBrief();
-  if (!session.confusionBrief) void session.loadConfusionBrief();
+function setView(view: MainView) {
+  mainView.value = view;
+  if (view === "insights") {
+    if (!session.forecastBrief) void session.loadForecastBrief();
+    if (!session.confusionBrief) void session.loadConfusionBrief();
+  }
+  if (view === "progress" && !session.progress) void session.loadProgress();
 }
 
-// Non-teachers never see the insights view.
+// Reset to the console whenever the signed-in user changes (e.g. switching demo role).
 watch(
-  () => session.isTeacher,
-  (isTeacher) => {
-    if (!isTeacher) teacherView.value = "console";
+  () => session.user?.id,
+  () => {
+    mainView.value = "console";
   },
 );
 
@@ -83,20 +90,37 @@ async function submitTeachBack() {
           <h1 class="mt-1 text-2xl font-semibold tracking-normal">Teacher-gated learning console</h1>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <div v-if="session.isTeacher" class="mr-1 flex gap-2">
+          <div v-if="session.user" class="mr-1 flex flex-wrap gap-2">
             <button
               class="tool-tab"
-              :class="{ 'tool-tab-active': teacherView === 'console' }"
-              @click="teacherView = 'console'"
+              :class="{ 'tool-tab-active': mainView === 'console' }"
+              @click="setView('console')"
             >
               Learning Console
             </button>
             <button
+              v-if="session.isTeacher"
               class="tool-tab"
-              :class="{ 'tool-tab-active': teacherView === 'insights' }"
-              @click="openInsights()"
+              :class="{ 'tool-tab-active': mainView === 'insights' }"
+              @click="setView('insights')"
             >
               Teacher Insights
+            </button>
+            <button
+              v-if="session.isStudent"
+              class="tool-tab"
+              :class="{ 'tool-tab-active': mainView === 'selfstart' }"
+              @click="setView('selfstart')"
+            >
+              Self-Start
+            </button>
+            <button
+              v-if="session.isStudent"
+              class="tool-tab"
+              :class="{ 'tool-tab-active': mainView === 'progress' }"
+              @click="setView('progress')"
+            >
+              My Progress
             </button>
           </div>
           <button
@@ -193,12 +217,26 @@ async function submitTeachBack() {
         </div>
       </aside>
 
-      <div v-if="session.isTeacher && teacherView === 'insights'" class="space-y-5">
+      <div v-if="session.isTeacher && mainView === 'insights'" class="space-y-5">
         <div v-if="session.error" class="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           {{ session.error }}
         </div>
         <ForecastBrief />
         <ConfusionBrief />
+      </div>
+
+      <div v-else-if="session.isStudent && mainView === 'selfstart'" class="space-y-5">
+        <div v-if="session.error" class="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {{ session.error }}
+        </div>
+        <SelfStart />
+      </div>
+
+      <div v-else-if="session.isStudent && mainView === 'progress'" class="space-y-5">
+        <div v-if="session.error" class="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {{ session.error }}
+        </div>
+        <Progress />
       </div>
 
       <section v-else class="panel min-h-[620px]">

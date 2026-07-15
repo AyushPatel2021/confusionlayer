@@ -90,6 +90,12 @@ def generate_tutorial(concept: Concept, reading_level: str) -> TutorialContent:
     return parse_tutorial_response(response_text)
 
 
+def generate_self_start_tutorial(topic: str, reading_level: str, subject_context: dict[str, str]) -> TutorialContent:
+    prompt = f"{_self_start_instructions()}\n\n{_self_start_input(topic, reading_level, subject_context)}"
+    response_text = _run_codex_json(prompt, "tutorial.schema.json")
+    return parse_tutorial_response(response_text)
+
+
 def generate_doubt_response(concept: Concept, message: str, history: list[dict[str, str]], turn_count: int) -> DoubtChatContent:
     response_type = doubt_response_type(turn_count)
     prompt = f"{_doubt_instructions(response_type)}\n\n{_doubt_input(concept, message, history, turn_count)}"
@@ -336,6 +342,27 @@ def _tutorial_instructions() -> str:
         "You are the Tutorial Generator for ConfusionLayer. Return only valid JSON with exactly "
         "these keys: explanation and worked_example. The explanation must be 200-300 words. "
         "Do not compute mastery scores. Do not invent curriculum scope beyond the provided concept context."
+    )
+
+
+def _self_start_instructions() -> str:
+    return (
+        "You are the Tutorial Generator for ConfusionLayer, handling a student's self-started topic that is "
+        "OUTSIDE the official school syllabus. Return only valid JSON with exactly these keys: explanation and "
+        "worked_example. The explanation must be 200-300 words, pitched at the given reading level. Include one "
+        "simple worked example. Stay on the student's topic; if the topic is unclear or not a real learning topic, "
+        "give a brief, safe general explanation instead. Do not compute mastery scores."
+    )
+
+
+def _self_start_input(topic: str, reading_level: str, subject_context: dict[str, str]) -> str:
+    return (
+        f"Reading level: {reading_level}\n"
+        f"Student's typical context (for pitching level only): "
+        f"{subject_context.get('board', '')} {subject_context.get('class_level', '')} {subject_context.get('subject', '')}\n"
+        f"Self-started topic (outside official syllabus): {topic}\n\n"
+        "Generate a concise tutorial for this topic. Return JSON only: "
+        "{\"explanation\": string, \"worked_example\": string}."
     )
 
 

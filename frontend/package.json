@@ -10,17 +10,18 @@
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
+    "chart.js": "^4.5.1",
     "pinia": "^3.0.3",
     "vue": "^3.5.17",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
+    "@vue/tsconfig": "^0.7.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
-    "@vue/tsconfig": "^0.7.0",
     "vue-tsc": "^2.2.12"
   }
 }

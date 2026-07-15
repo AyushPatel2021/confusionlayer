@@ -138,6 +138,31 @@ export interface BriefNarrative {
   suggested_activity: string;
 }
 
+export interface ProgressPoint {
+  recorded_at: string;
+  mastery: number;
+}
+
+export interface ProgressConcept {
+  concept_id: number;
+  concept_title: string;
+  chapter_title: string;
+  current_mastery: number;
+  effective_mastery: number;
+  history: ProgressPoint[];
+}
+
+export interface StudentProgress {
+  student_name: string;
+  mastered_threshold: number;
+  summary: {
+    concept_count: number;
+    mastered_count: number;
+    average_effective_mastery: number;
+  };
+  concepts: ProgressConcept[];
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -160,6 +185,8 @@ export const useSessionStore = defineStore("session", {
     confusionBrief: null as ConfusionBrief | null,
     forecastNarratives: {} as Record<number, BriefNarrative>,
     confusionNarratives: {} as Record<number, BriefNarrative>,
+    selfStartTutorial: null as Tutorial | null,
+    progress: null as StudentProgress | null,
     loading: "",
     error: "",
   }),
@@ -188,6 +215,8 @@ export const useSessionStore = defineStore("session", {
         this.confusionBrief = null;
         this.forecastNarratives = {};
         this.confusionNarratives = {};
+        this.selfStartTutorial = null;
+        this.progress = null;
         await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
@@ -413,6 +442,34 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async generateSelfStart(topic: string, readingLevel = "Class 10") {
+      if (!topic.trim()) return;
+      this.loading = "self-start";
+      this.error = "";
+      this.selfStartTutorial = null;
+      try {
+        this.selfStartTutorial = await api<Tutorial>("/api/self-start/tutorial", {
+          method: "POST",
+          token: this.token,
+          body: JSON.stringify({ topic: topic.trim(), reading_level: readingLevel }),
+        });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadProgress() {
+      this.loading = "progress";
+      this.error = "";
+      try {
+        this.progress = await api<StudentProgress>("/api/student/progress", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
     logout() {
       this.token = "";
       this.user = null;
@@ -427,6 +484,8 @@ export const useSessionStore = defineStore("session", {
       this.confusionBrief = null;
       this.forecastNarratives = {};
       this.confusionNarratives = {};
+      this.selfStartTutorial = null;
+      this.progress = null;
       this.error = "";
       localStorage.removeItem(tokenKey);
     },

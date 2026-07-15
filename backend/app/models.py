@@ -206,6 +206,20 @@ class MasteryRecord(Base):
     student: Mapped[Student] = relationship(back_populates="mastery_records")
 
 
+class MasteryHistory(Base):
+    __tablename__ = "mastery_history"
+    __table_args__ = (
+        CheckConstraint("mastery >= 0 AND mastery <= 1", name="ck_mastery_history_range"),
+        UniqueConstraint("student_id", "concept_id", "recorded_at", name="uq_mastery_history_point"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False)
+    mastery: Mapped[float] = mapped_column(Float, nullable=False)
+    recorded_at: Mapped[date] = mapped_column(Date, nullable=False)
+
+
 class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
     __table_args__ = (

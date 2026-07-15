@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -12,10 +12,12 @@ from app.ai import (
     generate_confusion_narrative,
     generate_doubt_response,
     generate_forecast_narrative,
+    generate_self_start_tutorial,
     generate_tutorial,
     grade_quiz_answer,
     grade_teach_back,
 )
+from app.mastery import days_since_review, effective_mastery
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
@@ -40,8 +42,11 @@ from app.models import (
     ClassroomStudent,
     Concept,
     ConfusionBrief,
+    MasteryHistory,
+    MasteryRecord,
     MisconceptionTaxonomy,
     QuizAttempt,
+    Student,
     Subject,
     TeachBackAttempt,
     User,
@@ -244,6 +249,38 @@ class BriefNarrativeResponse(BaseModel):
     concept_title: str
     summary: str
     suggested_activity: str
+
+
+class SelfStartRequest(BaseModel):
+    topic: str
+    reading_level: str = "Class 10"
+
+
+class ProgressPointResponse(BaseModel):
+    recorded_at: date
+    mastery: float
+
+
+class ProgressConceptResponse(BaseModel):
+    concept_id: int
+    concept_title: str
+    chapter_title: str
+    current_mastery: float
+    effective_mastery: float
+    history: list[ProgressPointResponse]
+
+
+class ProgressSummaryResponse(BaseModel):
+    concept_count: int
+    mastered_count: int
+    average_effective_mastery: float
+
+
+class StudentProgressResponse(BaseModel):
+    student_name: str
+    mastered_threshold: float
+    summary: ProgressSummaryResponse
+    concepts: list[ProgressConceptResponse]
 
 
 @app.get("/api/health")
@@ -676,6 +713,94 @@ def grade_teach_back_endpoint(
         gap_identified=grade.gap_identified,
         encouragement=grade.encouragement,
         attempt_id=attempt.id,
+    )
+
+
+MASTERED_THRESHOLD = 0.8
+
+
+@app.post("/api/self-start/tutorial", response_model=TutorialResponse)
+def self_start_tutorial(
+    payload: SelfStartRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TutorialResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can self-start topics")
+
+    topic = payload.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A topic is required")
+
+    classroom = _get_user_classroom(db, current_user)
+    subject = classroom.subject
+    check_and_increment_ai_usage(db, current_user)
+    content = generate_self_start_tutorial(
+        topic,
+        payload.reading_level,
+        {"board": subject.board, "class_level": subject.class_level, "subject": subject.name},
+    )
+    return TutorialResponse(explanation=content.explanation, worked_example=content.worked_example)
+
+
+@app.get("/api/student/progress", response_model=StudentProgressResponse)
+def student_progress(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudentProgressResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can view their progress")
+
+    student = db.get(Student, current_user.student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student profile not found")
+
+    rows = db.execute(
+        select(MasteryRecord, Concept.title, Chapter.title, Chapter.order, Concept.order)
+        .join(Concept, Concept.id == MasteryRecord.concept_id)
+        .join(Chapter, Chapter.id == Concept.chapter_id)
+        .where(MasteryRecord.student_id == student.id)
+        .order_by(Chapter.order, Concept.order)
+    ).all()
+
+    history_by_concept: dict[int, list[MasteryHistory]] = {}
+    for point in db.scalars(
+        select(MasteryHistory)
+        .where(MasteryHistory.student_id == student.id)
+        .order_by(MasteryHistory.recorded_at)
+    ).all():
+        history_by_concept.setdefault(point.concept_id, []).append(point)
+
+    concepts: list[ProgressConceptResponse] = []
+    effective_values: list[float] = []
+    for record, concept_title, chapter_title, _chapter_order, _concept_order in rows:
+        effective = effective_mastery(record.computed_mastery, days_since_review(record.last_reviewed_at))
+        effective_values.append(effective)
+        concepts.append(
+            ProgressConceptResponse(
+                concept_id=record.concept_id,
+                concept_title=concept_title,
+                chapter_title=chapter_title,
+                current_mastery=record.computed_mastery,
+                effective_mastery=effective,
+                history=[
+                    ProgressPointResponse(recorded_at=point.recorded_at, mastery=point.mastery)
+                    for point in history_by_concept.get(record.concept_id, [])
+                ],
+            )
+        )
+
+    mastered = sum(1 for value in effective_values if value >= MASTERED_THRESHOLD)
+    average = round(sum(effective_values) / len(effective_values), 4) if effective_values else 0.0
+    return StudentProgressResponse(
+        student_name=student.name,
+        mastered_threshold=MASTERED_THRESHOLD,
+        summary=ProgressSummaryResponse(
+            concept_count=len(concepts),
+            mastered_count=mastered,
+            average_effective_mastery=average,
+        ),
+        concepts=concepts,
     )
 
 

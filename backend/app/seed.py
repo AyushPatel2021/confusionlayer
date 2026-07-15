@@ -15,6 +15,7 @@ from app.models import (
     ClassroomStudent,
     Concept,
     ConceptEdge,
+    MasteryHistory,
     MasteryRecord,
     MisconceptionTaxonomy,
     QuizAttempt,
@@ -365,10 +366,50 @@ def seed(session: Session) -> None:
     session.commit()
 
 
+def backfill_mastery_history(session: Session, weeks: int = 6) -> int:
+    """Add a weekly mastery snapshot series per (student, concept), trending up to
+    the current computed_mastery. Idempotent — safe to run against an already-seeded
+    DB (it only inserts points that don't already exist). Powers the mastery-over-time
+    chart on the student Progress screen; the values are synthetic demo history.
+    """
+    reference = datetime.now(UTC).date()
+    records = session.scalars(select(MasteryRecord)).all()
+    created = 0
+    for record in records:
+        final = record.computed_mastery
+        start = round(max(0.0, final * 0.5), 4)
+        for week in range(weeks, -1, -1):
+            recorded_at = reference - timedelta(weeks=week)
+            progress = (weeks - week) / weeks
+            wiggle = ((record.concept_id + week) % 3 - 1) * 0.015
+            value = round(min(1.0, max(0.0, start + (final - start) * progress + wiggle)), 4)
+            exists = session.scalar(
+                select(MasteryHistory.id).where(
+                    MasteryHistory.student_id == record.student_id,
+                    MasteryHistory.concept_id == record.concept_id,
+                    MasteryHistory.recorded_at == recorded_at,
+                )
+            )
+            if exists:
+                continue
+            session.add(
+                MasteryHistory(
+                    student_id=record.student_id,
+                    concept_id=record.concept_id,
+                    mastery=value,
+                    recorded_at=recorded_at,
+                )
+            )
+            created += 1
+    session.commit()
+    return created
+
+
 def main() -> None:
     with SessionLocal() as session:
         seed(session)
-    print("Night 1 seed data ready.")
+        created = backfill_mastery_history(session)
+    print(f"Seed data ready. Mastery history points added: {created}.")
 
 
 if __name__ == "__main__":
