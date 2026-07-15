@@ -55,6 +55,24 @@ class User(Base):
 
     teacher: Mapped[Teacher | None] = relationship(back_populates="user")
     student: Mapped[Student | None] = relationship(back_populates="user")
+    ai_call_usage: Mapped[list[AiCallUsage]] = relationship(back_populates="user")
+
+
+class AiCallUsage(Base):
+    __tablename__ = "ai_call_usage"
+    __table_args__ = (
+        CheckConstraint("call_count >= 0", name="ck_ai_call_usage_count_nonnegative"),
+        UniqueConstraint("user_id", "usage_date", name="uq_ai_call_usage_user_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False)
+    call_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="ai_call_usage")
 
 
 class Subject(Base):

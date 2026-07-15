@@ -116,6 +116,9 @@ Core learning endpoints:
 - `GET /api/student/syllabus`
 - `POST /api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock`
 - `GET /api/concepts/{concept_id}`
+- `POST /api/concepts/{concept_id}/tutorial`
+
+The tutorial endpoint calls GPT-5.6 through the OpenAI Responses API, returns structured JSON `{ explanation, worked_example }`, and is protected by the per-user daily AI call limit.
 
 ## Stack
 
@@ -197,6 +200,7 @@ POSTGRES_USER=confusionlayer
 POSTGRES_PASSWORD=change-me
 DATABASE_URL=postgresql+psycopg://confusionlayer:change-me@postgres:5432/confusionlayer
 OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.6
 AI_DAILY_CALL_LIMIT=50
 JWT_SECRET=change-this-to-a-long-random-secret
 JWT_EXPIRES_HOURS=24

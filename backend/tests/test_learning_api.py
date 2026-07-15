@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from unittest import TestCase
+from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-secret-for-learning-api-tests")
@@ -13,7 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth import SignupRequest, create_user
-from app.main import concept_detail, demo_context, student_syllabus, unlock_chapter
+from app.ai import TutorialContent
+from app.main import TutorialRequest, concept_detail, demo_context, student_syllabus, tutorial, unlock_chapter
 from app.models import (
     Base,
     Chapter,
@@ -116,6 +118,32 @@ class LearningApiTest(TestCase):
 
         self.assertEqual(response.id, self.unlocked_concept.id)
         self.assertEqual(response.taxonomy[0].code, "BAL_SUBSCRIPT_CHANGE")
+
+    def test_tutorial_generates_for_unlocked_concept_and_records_usage(self) -> None:
+        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Example")) as generate:
+            response = tutorial(
+                concept_id=self.unlocked_concept.id,
+                payload=TutorialRequest(reading_level="Class 10"),
+                current_user=self.student_user,
+                db=self.db,
+            )
+
+        self.assertEqual(response.explanation, "Explanation")
+        self.assertEqual(response.worked_example, "Example")
+        generate.assert_called_once()
+
+    def test_tutorial_rejects_locked_concept_before_ai_call(self) -> None:
+        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Example")) as generate:
+            with self.assertRaises(HTTPException) as exc:
+                tutorial(
+                    concept_id=self.locked_concept.id,
+                    payload=TutorialRequest(reading_level="Class 10"),
+                    current_user=self.student_user,
+                    db=self.db,
+                )
+
+        self.assertEqual(exc.exception.status_code, 403)
+        generate.assert_not_called()
 
     def _seed_minimal_classroom(self) -> None:
         subject = Subject(name="CBSE Class 10 Science", board="CBSE", class_level="10")

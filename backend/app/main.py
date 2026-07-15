@@ -6,6 +6,7 @@ from sqlalchemy import select
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.ai import check_and_increment_ai_usage, generate_tutorial
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
@@ -86,6 +87,15 @@ class ConceptDetailResponse(BaseModel):
     chapter_title: str
     subject: SubjectResponse
     taxonomy: list[TaxonomyResponse]
+
+
+class TutorialRequest(BaseModel):
+    reading_level: str = "Class 10"
+
+
+class TutorialResponse(BaseModel):
+    explanation: str
+    worked_example: str
 
 
 @app.get("/api/health")
@@ -221,15 +231,7 @@ def concept_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConceptDetailResponse:
-    concept = db.get(Concept, concept_id)
-    if not concept:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found")
-
-    classroom = _get_user_classroom(db, current_user)
-    if concept.chapter.subject_id != classroom.subject_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found for this classroom")
-    if current_user.role == "student" and not _is_chapter_unlocked(db, classroom.id, concept.chapter_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chapter is locked")
+    concept = _get_accessible_concept(db, current_user, concept_id)
 
     taxonomy = db.scalars(
         select(MisconceptionTaxonomy).where(MisconceptionTaxonomy.concept_id == concept.id).order_by(MisconceptionTaxonomy.code)
@@ -243,6 +245,32 @@ def concept_detail(
         subject=_subject_response(concept.chapter.subject),
         taxonomy=[TaxonomyResponse(code=item.code, description=item.description) for item in taxonomy],
     )
+
+
+@app.post("/api/concepts/{concept_id}/tutorial", response_model=TutorialResponse)
+def tutorial(
+    concept_id: int,
+    payload: TutorialRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TutorialResponse:
+    concept = _get_accessible_concept(db, current_user, concept_id)
+    check_and_increment_ai_usage(db, current_user)
+    content = generate_tutorial(concept, payload.reading_level)
+    return TutorialResponse(explanation=content.explanation, worked_example=content.worked_example)
+
+
+def _get_accessible_concept(db: Session, user: User, concept_id: int) -> Concept:
+    concept = db.get(Concept, concept_id)
+    if not concept:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found")
+
+    classroom = _get_user_classroom(db, user)
+    if concept.chapter.subject_id != classroom.subject_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found for this classroom")
+    if user.role == "student" and not _is_chapter_unlocked(db, classroom.id, concept.chapter_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chapter is locked")
+    return concept
 
 
 def _get_user_classroom(db: Session, user: User) -> Classroom:
