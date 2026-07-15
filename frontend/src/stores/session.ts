@@ -85,6 +85,59 @@ interface TeachBackGrade {
   attempt_id: number;
 }
 
+export interface MisconceptionCluster {
+  code: string;
+  description: string;
+  student_count: number;
+}
+
+export interface ConfusionConcept {
+  concept_id: number;
+  concept_title: string;
+  chapter_title: string;
+  affected_student_count: number;
+  misconceptions: MisconceptionCluster[];
+}
+
+export interface ConfusionBrief {
+  classroom_id: number;
+  total_students: number;
+  privacy_threshold: number;
+  concepts: ConfusionConcept[];
+}
+
+export interface ForecastContributor {
+  concept_id: number;
+  title: string;
+  average_effective_mastery: number;
+  mention_count: number;
+}
+
+export interface ForecastConcept {
+  concept_id: number;
+  concept_title: string;
+  chapter_title: string;
+  at_risk_count: number;
+  total_students: number;
+  average_difficulty: number;
+  top_contributors: ForecastContributor[];
+}
+
+export interface ForecastBrief {
+  classroom_id: number;
+  total_students: number;
+  at_risk_threshold: number;
+  computed_at: string | null;
+  concepts: ForecastConcept[];
+}
+
+export interface BriefNarrative {
+  concept_id: number;
+  concept_title: string;
+  summary: string;
+  suggested_activity: string;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -103,6 +156,10 @@ export const useSessionStore = defineStore("session", {
     chatMessages: [] as ChatMessage[],
     quizGrade: null as QuizGrade | null,
     teachBackGrade: null as TeachBackGrade | null,
+    forecastBrief: null as ForecastBrief | null,
+    confusionBrief: null as ConfusionBrief | null,
+    forecastNarratives: {} as Record<number, BriefNarrative>,
+    confusionNarratives: {} as Record<number, BriefNarrative>,
     loading: "",
     error: "",
   }),
@@ -127,6 +184,10 @@ export const useSessionStore = defineStore("session", {
         this.chatMessages = [];
         this.quizGrade = null;
         this.teachBackGrade = null;
+        this.forecastBrief = null;
+        this.confusionBrief = null;
+        this.forecastNarratives = {};
+        this.confusionNarratives = {};
         await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
@@ -274,6 +335,84 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadForecastBrief() {
+      if (!this.syllabus) return;
+      this.loading = "forecast-brief";
+      this.error = "";
+      try {
+        this.forecastBrief = await api<ForecastBrief>(
+          `/api/teacher/classrooms/${this.syllabus.classroom.id}/forecast-brief`,
+          { token: this.token },
+        );
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadConfusionBrief() {
+      if (!this.syllabus) return;
+      this.loading = "confusion-brief";
+      this.error = "";
+      try {
+        this.confusionBrief = await api<ConfusionBrief>(
+          `/api/teacher/classrooms/${this.syllabus.classroom.id}/confusion-brief`,
+          { token: this.token },
+        );
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async recomputeForecasts() {
+      if (!this.syllabus) return;
+      this.loading = "recompute";
+      this.error = "";
+      try {
+        await api(`/api/teacher/classrooms/${this.syllabus.classroom.id}/forecasts/recompute`, {
+          method: "POST",
+          token: this.token,
+        });
+        await this.loadForecastBrief();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async generateForecastNarrative(conceptId: number) {
+      if (!this.syllabus) return;
+      this.loading = `forecast-narrative-${conceptId}`;
+      this.error = "";
+      try {
+        const narrative = await api<BriefNarrative>(
+          `/api/teacher/classrooms/${this.syllabus.classroom.id}/forecast-brief/narrative`,
+          { method: "POST", token: this.token, body: JSON.stringify({ concept_id: conceptId }) },
+        );
+        this.forecastNarratives = { ...this.forecastNarratives, [conceptId]: narrative };
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async generateConfusionNarrative(conceptId: number) {
+      if (!this.syllabus) return;
+      this.loading = `confusion-narrative-${conceptId}`;
+      this.error = "";
+      try {
+        const narrative = await api<BriefNarrative>(
+          `/api/teacher/classrooms/${this.syllabus.classroom.id}/confusion-brief/narrative`,
+          { method: "POST", token: this.token, body: JSON.stringify({ concept_id: conceptId }) },
+        );
+        this.confusionNarratives = { ...this.confusionNarratives, [conceptId]: narrative };
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
     logout() {
       this.token = "";
       this.user = null;
@@ -284,6 +423,10 @@ export const useSessionStore = defineStore("session", {
       this.chatMessages = [];
       this.quizGrade = null;
       this.teachBackGrade = null;
+      this.forecastBrief = null;
+      this.confusionBrief = null;
+      this.forecastNarratives = {};
+      this.confusionNarratives = {};
       this.error = "";
       localStorage.removeItem(tokenKey);
     },

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
+import ConfusionBrief from "./components/ConfusionBrief.vue";
+import ForecastBrief from "./components/ForecastBrief.vue";
 import type { ChapterSummary, ConceptSummary } from "./stores/session";
 import { useSessionStore } from "./stores/session";
 
@@ -8,10 +10,25 @@ const session = useSessionStore();
 const doubtText = ref("");
 const quizAnswer = ref("");
 const teachBackText = ref("");
+const teacherView = ref<"console" | "insights">("console");
 
 onMounted(() => {
   void session.restore();
 });
+
+function openInsights() {
+  teacherView.value = "insights";
+  if (!session.forecastBrief) void session.loadForecastBrief();
+  if (!session.confusionBrief) void session.loadConfusionBrief();
+}
+
+// Non-teachers never see the insights view.
+watch(
+  () => session.isTeacher,
+  (isTeacher) => {
+    if (!isTeacher) teacherView.value = "console";
+  },
+);
 
 const unlockedCount = computed(() => session.syllabus?.chapters.filter((chapter) => !chapter.locked).length || 0);
 const totalConcepts = computed(
@@ -66,6 +83,22 @@ async function submitTeachBack() {
           <h1 class="mt-1 text-2xl font-semibold tracking-normal">Teacher-gated learning console</h1>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <div v-if="session.isTeacher" class="mr-1 flex gap-2">
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': teacherView === 'console' }"
+              @click="teacherView = 'console'"
+            >
+              Learning Console
+            </button>
+            <button
+              class="tool-tab"
+              :class="{ 'tool-tab-active': teacherView === 'insights' }"
+              @click="openInsights()"
+            >
+              Teacher Insights
+            </button>
+          </div>
           <button
             class="btn-primary"
             :disabled="!!session.loading"
@@ -160,7 +193,15 @@ async function submitTeachBack() {
         </div>
       </aside>
 
-      <section class="panel min-h-[620px]">
+      <div v-if="session.isTeacher && teacherView === 'insights'" class="space-y-5">
+        <div v-if="session.error" class="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {{ session.error }}
+        </div>
+        <ForecastBrief />
+        <ConfusionBrief />
+      </div>
+
+      <section v-else class="panel min-h-[620px]">
         <div v-if="session.error" class="mb-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           {{ session.error }}
         </div>

@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.ai import (
     check_and_increment_ai_usage,
     codex_model,
+    generate_confusion_narrative,
     generate_doubt_response,
+    generate_forecast_narrative,
     generate_tutorial,
     grade_quiz_answer,
     grade_teach_back,
@@ -28,6 +30,7 @@ from app.auth import (
     set_auth_cookie,
     user_response,
 )
+from app.briefs import aggregate_confusion, aggregate_forecast
 from app.db import get_db
 from app.forecast import recompute_classroom_forecasts
 from app.models import (
@@ -36,6 +39,7 @@ from app.models import (
     Classroom,
     ClassroomStudent,
     Concept,
+    ConfusionBrief,
     MisconceptionTaxonomy,
     QuizAttempt,
     Subject,
@@ -185,6 +189,63 @@ class ForecastRecomputeResponse(BaseModel):
     forecasts: list[ForecastRecordResponse]
 
 
+class MisconceptionClusterResponse(BaseModel):
+    code: str
+    description: str
+    student_count: int
+
+
+class ConfusionConceptResponse(BaseModel):
+    concept_id: int
+    concept_title: str
+    chapter_title: str
+    affected_student_count: int
+    misconceptions: list[MisconceptionClusterResponse]
+
+
+class ConfusionBriefResponse(BaseModel):
+    classroom_id: int
+    total_students: int
+    privacy_threshold: int
+    concepts: list[ConfusionConceptResponse]
+
+
+class ForecastContributorResponse(BaseModel):
+    concept_id: int
+    title: str
+    average_effective_mastery: float
+    mention_count: int
+
+
+class ForecastConceptResponse(BaseModel):
+    concept_id: int
+    concept_title: str
+    chapter_title: str
+    at_risk_count: int
+    total_students: int
+    average_difficulty: float
+    top_contributors: list[ForecastContributorResponse]
+
+
+class ForecastBriefResponse(BaseModel):
+    classroom_id: int
+    total_students: int
+    at_risk_threshold: float
+    computed_at: datetime | None
+    concepts: list[ForecastConceptResponse]
+
+
+class BriefNarrativeRequest(BaseModel):
+    concept_id: int
+
+
+class BriefNarrativeResponse(BaseModel):
+    concept_id: int
+    concept_title: str
+    summary: str
+    suggested_activity: str
+
+
 @app.get("/api/health")
 def health() -> dict[str, str | bool | int]:
     return {
@@ -281,11 +342,7 @@ def unlock_chapter(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChapterUnlockResponse:
-    classroom = db.get(Classroom, classroom_id)
-    if not classroom:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
-    if current_user.role == "student" or (current_user.role == "teacher" and classroom.teacher_id != current_user.teacher_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to unlock this classroom")
+    classroom = _require_teacher_classroom(db, current_user, classroom_id, "unlock chapters")
 
     chapter = db.get(Chapter, chapter_id)
     if not chapter or chapter.subject_id != classroom.subject_id:
@@ -319,11 +376,7 @@ def recompute_forecasts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ForecastRecomputeResponse:
-    classroom = db.get(Classroom, classroom_id)
-    if not classroom:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
-    if current_user.role == "student" or (current_user.role == "teacher" and classroom.teacher_id != current_user.teacher_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to recompute forecasts for this classroom")
+    _require_teacher_classroom(db, current_user, classroom_id, "recompute forecasts")
 
     records = recompute_classroom_forecasts(db, classroom_id)
     return ForecastRecomputeResponse(
@@ -350,6 +403,152 @@ def recompute_forecasts(
             )
             for record in records
         ],
+    )
+
+
+@app.get("/api/teacher/classrooms/{classroom_id}/confusion-brief", response_model=ConfusionBriefResponse)
+def confusion_brief(
+    classroom_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ConfusionBriefResponse:
+    _require_teacher_classroom(db, current_user, classroom_id, "view the confusion brief")
+    aggregate = aggregate_confusion(db, classroom_id)
+    return ConfusionBriefResponse(
+        classroom_id=aggregate.classroom_id,
+        total_students=aggregate.total_students,
+        privacy_threshold=aggregate.privacy_threshold,
+        concepts=[
+            ConfusionConceptResponse(
+                concept_id=concept.concept_id,
+                concept_title=concept.concept_title,
+                chapter_title=concept.chapter_title,
+                affected_student_count=concept.affected_student_count,
+                misconceptions=[
+                    MisconceptionClusterResponse(code=item.code, description=item.description, student_count=item.student_count)
+                    for item in concept.misconceptions
+                ],
+            )
+            for concept in aggregate.concepts
+        ],
+    )
+
+
+@app.post("/api/teacher/classrooms/{classroom_id}/confusion-brief/narrative", response_model=BriefNarrativeResponse)
+def confusion_brief_narrative(
+    classroom_id: int,
+    payload: BriefNarrativeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BriefNarrativeResponse:
+    _require_teacher_classroom(db, current_user, classroom_id, "generate the confusion brief")
+    aggregate = aggregate_confusion(db, classroom_id)
+    concept = next((item for item in aggregate.concepts if item.concept_id == payload.concept_id), None)
+    if concept is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No confusion data meets the privacy threshold for this concept",
+        )
+
+    check_and_increment_ai_usage(db, current_user)
+    misconceptions = [
+        {"code": item.code, "description": item.description, "student_count": item.student_count}
+        for item in concept.misconceptions
+    ]
+    narrative = generate_confusion_narrative(
+        concept.concept_title, concept.affected_student_count, aggregate.total_students, misconceptions
+    )
+
+    db.add(
+        ConfusionBrief(
+            classroom_id=classroom_id,
+            concept_id=concept.concept_id,
+            generated_text=f"{narrative.summary}\n\nSuggested activity: {narrative.suggested_activity}",
+            affected_student_count=concept.affected_student_count,
+            misconception_breakdown={item.code: item.student_count for item in concept.misconceptions},
+        )
+    )
+    db.commit()
+
+    return BriefNarrativeResponse(
+        concept_id=concept.concept_id,
+        concept_title=concept.concept_title,
+        summary=narrative.summary,
+        suggested_activity=narrative.suggested_activity,
+    )
+
+
+@app.get("/api/teacher/classrooms/{classroom_id}/forecast-brief", response_model=ForecastBriefResponse)
+def forecast_brief(
+    classroom_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ForecastBriefResponse:
+    _require_teacher_classroom(db, current_user, classroom_id, "view the forecast brief")
+    aggregate = aggregate_forecast(db, classroom_id)
+    return ForecastBriefResponse(
+        classroom_id=aggregate.classroom_id,
+        total_students=aggregate.total_students,
+        at_risk_threshold=aggregate.at_risk_threshold,
+        computed_at=aggregate.computed_at,
+        concepts=[
+            ForecastConceptResponse(
+                concept_id=concept.concept_id,
+                concept_title=concept.concept_title,
+                chapter_title=concept.chapter_title,
+                at_risk_count=concept.at_risk_count,
+                total_students=concept.total_students,
+                average_difficulty=concept.average_difficulty,
+                top_contributors=[
+                    ForecastContributorResponse(
+                        concept_id=item.concept_id,
+                        title=item.title,
+                        average_effective_mastery=item.average_effective_mastery,
+                        mention_count=item.mention_count,
+                    )
+                    for item in concept.top_contributors
+                ],
+            )
+            for concept in aggregate.concepts
+        ],
+    )
+
+
+@app.post("/api/teacher/classrooms/{classroom_id}/forecast-brief/narrative", response_model=BriefNarrativeResponse)
+def forecast_brief_narrative(
+    classroom_id: int,
+    payload: BriefNarrativeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BriefNarrativeResponse:
+    _require_teacher_classroom(db, current_user, classroom_id, "generate the forecast brief")
+    aggregate = aggregate_forecast(db, classroom_id)
+    concept = next((item for item in aggregate.concepts if item.concept_id == payload.concept_id), None)
+    if concept is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No forecast data is available for this concept",
+        )
+
+    check_and_increment_ai_usage(db, current_user)
+    contributors = [
+        {
+            "concept_id": item.concept_id,
+            "title": item.title,
+            "average_effective_mastery": item.average_effective_mastery,
+            "mention_count": item.mention_count,
+        }
+        for item in concept.top_contributors
+    ]
+    narrative = generate_forecast_narrative(
+        concept.concept_title, concept.at_risk_count, concept.total_students, contributors
+    )
+
+    return BriefNarrativeResponse(
+        concept_id=concept.concept_id,
+        concept_title=concept.concept_title,
+        summary=narrative.summary,
+        suggested_activity=narrative.suggested_activity,
     )
 
 
@@ -478,6 +677,15 @@ def grade_teach_back_endpoint(
         encouragement=grade.encouragement,
         attempt_id=attempt.id,
     )
+
+
+def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    if user.role == "student" or (user.role == "teacher" and classroom.teacher_id != user.teacher_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Not allowed to {action} for this classroom")
+    return classroom
 
 
 def _get_accessible_concept(db: Session, user: User, concept_id: int) -> Concept:

@@ -122,4 +122,16 @@ button:disabled {
   .text-area {
     @apply min-h-36 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100;
   }
+
+  .forecast-bar {
+    @apply h-2 w-full overflow-hidden bg-slate-200;
+  }
+
+  .forecast-bar-fill {
+    @apply h-full bg-emerald-700 transition-all;
+  }
+
+  .skeleton-card {
+    @apply h-28 w-full animate-pulse border border-slate-200 bg-slate-100;
+  }
 }

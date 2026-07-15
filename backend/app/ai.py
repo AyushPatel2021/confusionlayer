@@ -45,6 +45,12 @@ class TeachBackGradeContent:
     encouragement: str
 
 
+@dataclass(frozen=True)
+class BriefNarrativeContent:
+    summary: str
+    suggested_activity: str
+
+
 def ai_daily_call_limit() -> int:
     return int(os.getenv("AI_DAILY_CALL_LIMIT", "50"))
 
@@ -112,6 +118,34 @@ def grade_teach_back(concept: Concept, correct_summary: str, student_explanation
     prompt = f"{_teach_back_instructions()}\n\n{_teach_back_input(concept, correct_summary, student_explanation)}"
     response_text = _run_codex_json(prompt, "teach_back.schema.json")
     return parse_teach_back_response(response_text)
+
+
+def generate_confusion_narrative(
+    concept_title: str,
+    affected_student_count: int,
+    total_students: int,
+    misconceptions: list[dict[str, Any]],
+) -> BriefNarrativeContent:
+    prompt = (
+        f"{_confusion_narrative_instructions()}\n\n"
+        f"{_brief_narrative_input(concept_title, {'affected_student_count': affected_student_count, 'total_students': total_students, 'misconceptions': misconceptions})}"
+    )
+    response_text = _run_codex_json(prompt, "confusion_brief.schema.json")
+    return parse_brief_narrative(response_text, "Confusion brief")
+
+
+def generate_forecast_narrative(
+    concept_title: str,
+    at_risk_count: int,
+    total_students: int,
+    contributors: list[dict[str, Any]],
+) -> BriefNarrativeContent:
+    prompt = (
+        f"{_forecast_narrative_instructions()}\n\n"
+        f"{_brief_narrative_input(concept_title, {'at_risk_count': at_risk_count, 'total_students': total_students, 'contributing_concepts': contributors})}"
+    )
+    response_text = _run_codex_json(prompt, "forecast_brief.schema.json")
+    return parse_brief_narrative(response_text, "Forecast brief")
 
 
 def doubt_response_type(turn_count: int) -> str:
@@ -197,6 +231,17 @@ def parse_teach_back_response(response_payload: dict[str, Any] | str) -> TeachBa
         gap_identified=gap_identified,
         encouragement=encouragement,
     )
+
+
+def parse_brief_narrative(response_payload: dict[str, Any] | str, label: str) -> BriefNarrativeContent:
+    content = _json_content(response_payload, label)
+    summary = content.get("summary")
+    suggested_activity = content.get("suggested_activity")
+    if not isinstance(summary, str) or not summary.strip():
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{label} summary was invalid")
+    if not isinstance(suggested_activity, str) or not suggested_activity.strip():
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{label} suggested_activity was invalid")
+    return BriefNarrativeContent(summary=summary, suggested_activity=suggested_activity)
 
 
 def _json_content(response_payload: dict[str, Any] | str, label: str) -> dict[str, Any]:
@@ -385,4 +430,32 @@ def _teach_back_input(concept: Concept, correct_summary: str, student_explanatio
         f"Concept: {concept.title}\n"
         f"Correct concept summary/rubric: {correct_summary}\n"
         f"Student explanation: {student_explanation}\n"
+    )
+
+
+def _confusion_narrative_instructions() -> str:
+    return (
+        "You are the Confusion Brief narrator for ConfusionLayer, writing for a teacher. Return only valid JSON "
+        "with exactly these keys: summary and suggested_activity. The summary is 1-2 sentences describing where the "
+        "class is confused, using ONLY the counts provided. The suggested_activity is one short, concrete classroom "
+        "action (include an approximate time in minutes). Do not invent, recompute, or change any numbers. Do not "
+        "name individual students. Do not compute mastery scores."
+    )
+
+
+def _forecast_narrative_instructions() -> str:
+    return (
+        "You are the Forecast Brief narrator for ConfusionLayer, writing a pre-lesson briefing for a teacher. Return "
+        "only valid JSON with exactly these keys: summary and suggested_activity. The summary is 1-2 sentences stating "
+        "how many students are predicted to struggle with the upcoming concept and which weak prerequisites are driving "
+        "it, using ONLY the numbers provided. The suggested_activity is one short recap action to run before the lesson "
+        "(include an approximate time in minutes). Do not invent, recompute, or change any numbers. Do not name "
+        "individual students. Do not compute mastery or difficulty scores."
+    )
+
+
+def _brief_narrative_input(concept_title: str, payload: dict[str, Any]) -> str:
+    return (
+        f"Concept: {concept_title}\n"
+        f"Deterministic figures (already computed, do not change) JSON: {json.dumps(payload, ensure_ascii=True)}\n"
     )

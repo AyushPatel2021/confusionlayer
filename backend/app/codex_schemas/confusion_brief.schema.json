@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "suggested_activity"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "suggested_activity": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
