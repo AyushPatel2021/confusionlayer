@@ -11,7 +11,7 @@ Night 1 foundation is scaffolded in this repository:
 - Docker Compose stack with `postgres`, `backend`, and `frontend`.
 - FastAPI placeholder backend at `/api/health`.
 - Vue 3 + TypeScript + Vite + Pinia + Vue Router + Tailwind placeholder frontend.
-- Caddy-based static frontend container with API reverse proxy.
+- Static frontend container with API reverse proxy; the live VM keeps nginx on public `80/443`.
 - SQLAlchemy models for the Project Spec Section 4 schema.
 - Alembic initialized with the first migration.
 - Idempotent Night 1 seed script for the demo classroom data.
@@ -118,7 +118,7 @@ Core learning endpoints:
 - `GET /api/concepts/{concept_id}`
 - `POST /api/concepts/{concept_id}/tutorial`
 
-The tutorial endpoint calls GPT-5.6 through the OpenAI Responses API, returns structured JSON `{ explanation, worked_example }`, and is protected by the per-user daily AI call limit.
+The tutorial endpoint calls Codex CLI (`codex exec`) with the configured model, returns structured JSON `{ explanation, worked_example }`, and is protected by the per-user daily AI call limit. There is no Platform API fallback path.
 
 ## Stack
 
@@ -126,7 +126,7 @@ The tutorial endpoint calls GPT-5.6 through the OpenAI Responses API, returns st
 - Backend: FastAPI
 - Database: PostgreSQL
 - Deployment: Docker Compose on Oracle Cloud VM
-- Edge/static serving: Caddy
+- Edge/static serving: nginx on the live VM, with the frontend container bound internally
 
 ## Local Setup
 
@@ -199,8 +199,8 @@ POSTGRES_DB=confusionlayer
 POSTGRES_USER=confusionlayer
 POSTGRES_PASSWORD=change-me
 DATABASE_URL=postgresql+psycopg://confusionlayer:change-me@postgres:5432/confusionlayer
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-5.6
+CODEX_MODEL=gpt-5.6-terra
+CODEX_TIMEOUT_SECONDS=90
 AI_DAILY_CALL_LIMIT=50
 JWT_SECRET=change-this-to-a-long-random-secret
 JWT_EXPIRES_HOURS=24
@@ -208,6 +208,8 @@ AUTH_COOKIE_SECURE=0
 ```
 
 Use `AUTH_COOKIE_SECURE=1` on HTTPS deployments.
+
+The backend Docker container mounts `${HOME}/.codex` into `/root/.codex`, so run `codex login` on the host before starting the stack. The VM production login should use the ChatGPT Plus account.
 
 ## Oracle VM Deployment Notes
 
@@ -253,10 +255,7 @@ HTTPS is currently issued by Certbot/Let's Encrypt on nginx.
 
 ### Port 80/443 Decision
 
-The VM already uses nginx on `443` for `znova.in`. Choose one of these before final HTTPS deployment:
-
-1. Preferred for the spec: migrate edge traffic to Caddy and let this Compose stack bind `80/443`.
-2. Lowest-risk with the current VM: keep nginx on `80/443`, run the ConfusionLayer frontend container on an internal port, and add an nginx server block for `confusionlayer.znova.in`.
+The VM uses nginx on public `80/443`. Keep ConfusionLayer behind the nginx override so the app stays internal and nginx owns public TLS.
 
 For the current VM, use the nginx override so the app stays internal and nginx owns public `80/443`:
 
@@ -289,7 +288,7 @@ docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.nginx.yml ps
 ```
 
-For a direct Caddy deployment that binds public `80/443`, run with:
+For a direct local deployment that binds public `80/443`, run with:
 
 ```bash
 CONFUSIONLAYER_NGINX_PROXY=0 ./scripts/redeploy.sh

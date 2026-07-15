@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -23,6 +24,14 @@ class TutorialContent:
 
 def ai_daily_call_limit() -> int:
     return int(os.getenv("AI_DAILY_CALL_LIMIT", "50"))
+
+
+def codex_model() -> str:
+    return os.getenv("CODEX_MODEL", "gpt-5.6-terra")
+
+
+def codex_timeout_seconds() -> int:
+    return int(os.getenv("CODEX_TIMEOUT_SECONDS", "90"))
 
 
 def check_and_increment_ai_usage(db: Session, user: User, usage_date: date | None = None) -> AiCallUsage:
@@ -47,42 +56,18 @@ def check_and_increment_ai_usage(db: Session, user: User, usage_date: date | Non
 
 
 def generate_tutorial(concept: Concept, reading_level: str) -> TutorialContent:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OPENAI_API_KEY is not configured")
-
-    payload = {
-        "model": os.getenv("OPENAI_MODEL", "gpt-5.6"),
-        "instructions": _tutorial_instructions(),
-        "input": _tutorial_input(concept, reading_level),
-        "text": {"format": {"type": "json_object"}},
-    }
-    request = urllib.request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"OpenAI API error: {detail}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI API request failed") from exc
-
-    return parse_tutorial_response(response_payload)
+    prompt = f"{_tutorial_instructions()}\n\n{_tutorial_input(concept, reading_level)}"
+    response_text = _run_codex_json(prompt, "tutorial.schema.json")
+    return parse_tutorial_response(response_text)
 
 
-def parse_tutorial_response(response_payload: dict[str, Any]) -> TutorialContent:
-    output_text = response_payload.get("output_text")
-    if not isinstance(output_text, str):
-        output_text = _extract_output_text(response_payload)
+def parse_tutorial_response(response_payload: dict[str, Any] | str) -> TutorialContent:
+    if isinstance(response_payload, str):
+        output_text = response_payload
+    else:
+        output_text = response_payload.get("output_text")
+        if not isinstance(output_text, str):
+            output_text = _extract_output_text(response_payload)
 
     try:
         content = json.loads(output_text)
@@ -94,6 +79,64 @@ def parse_tutorial_response(response_payload: dict[str, Any]) -> TutorialContent
     if not isinstance(explanation, str) or not isinstance(worked_example, str):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tutorial response did not match the contract")
     return TutorialContent(explanation=explanation, worked_example=worked_example)
+
+
+def _run_codex_json(prompt: str, schema_filename: str) -> str:
+    schema_path = Path(__file__).resolve().parent / "codex_schemas" / schema_filename
+    if not schema_path.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Codex output schema is missing")
+
+    with tempfile.TemporaryDirectory(prefix="confusionlayer-codex-") as temp_dir:
+        output_path = Path(temp_dir) / "last-message.json"
+        command = [
+            "codex",
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--sandbox",
+            "read-only",
+            "--json",
+            "--model",
+            codex_model(),
+            "--output-schema",
+            str(schema_path),
+            "--output-last-message",
+            str(output_path),
+            prompt,
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                cwd=temp_dir,
+                text=True,
+                timeout=codex_timeout_seconds(),
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Codex CLI is not installed") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Codex inference timed out") from exc
+
+        if result.returncode != 0:
+            detail = _compact_codex_error(result.stdout, result.stderr)
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Codex inference failed: {detail}")
+
+        if not output_path.exists():
+            detail = _compact_codex_error(result.stdout, result.stderr)
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Codex did not write a final response: {detail}")
+
+        return output_path.read_text(encoding="utf-8")
+
+
+def _compact_codex_error(stdout: str, stderr: str) -> str:
+    combined = "\n".join(part for part in (stderr.strip(), stdout.strip()) if part)
+    if not combined:
+        return "no diagnostic output"
+    lines = combined.splitlines()
+    return "\n".join(lines[-12:])[:1500]
 
 
 def _extract_output_text(response_payload: dict[str, Any]) -> str:

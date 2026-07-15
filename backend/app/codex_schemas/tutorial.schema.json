@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["explanation", "worked_example"],
+  "properties": {
+    "explanation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worked_example": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

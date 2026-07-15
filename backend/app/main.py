@@ -6,7 +6,7 @@ from sqlalchemy import select
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.ai import check_and_increment_ai_usage, generate_tutorial
+from app.ai import check_and_increment_ai_usage, codex_model, generate_tutorial
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
@@ -105,6 +105,7 @@ def health() -> dict[str, str | bool | int]:
         "service": "confusionlayer-backend",
         "database_configured": bool(os.getenv("DATABASE_URL")),
         "ai_daily_call_limit": int(os.getenv("AI_DAILY_CALL_LIMIT", "50")),
+        "codex_model": codex_model(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

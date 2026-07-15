@@ -63,6 +63,14 @@ class AiUsageTest(TestCase):
         self.assertEqual(tutorial.explanation, "A focused explanation.")
         self.assertEqual(tutorial.worked_example, "A worked example.")
 
+    def test_parse_tutorial_response_accepts_codex_final_message_json(self) -> None:
+        tutorial = parse_tutorial_response(
+            '{"explanation": "A Codex explanation.", "worked_example": "A Codex worked example."}'
+        )
+
+        self.assertEqual(tutorial.explanation, "A Codex explanation.")
+        self.assertEqual(tutorial.worked_example, "A Codex worked example.")
+
     def test_parse_tutorial_response_rejects_bad_contract(self) -> None:
         with self.assertRaises(HTTPException):
             parse_tutorial_response({"output_text": '{"explanation": "Missing example."}'})
