@@ -27,7 +27,7 @@ def ai_daily_call_limit() -> int:
 
 
 def codex_model() -> str:
-    return os.getenv("CODEX_MODEL", "gpt-5.6-terra")
+    return os.getenv("CODEX_MODEL", "gpt-5.6-luna")
 
 
 def codex_timeout_seconds() -> int:

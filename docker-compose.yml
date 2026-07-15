@@ -21,7 +21,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CODEX_HOME: /root/.codex
-      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.6-terra}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.6-luna}
       CODEX_TIMEOUT_SECONDS: ${CODEX_TIMEOUT_SECONDS:-90}
       AI_DAILY_CALL_LIMIT: ${AI_DAILY_CALL_LIMIT:-50}
       JWT_SECRET: ${JWT_SECRET}
