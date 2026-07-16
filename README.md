@@ -1,347 +1,149 @@
-# ConfusionLayer
+# Slate
 
-AI clears the confusion. Teachers lead the learning.
+**Run your school. Clear the confusion.**
 
-ConfusionLayer is a predictive, teacher-gated AI learning platform for the OpenAI Build Week Education Track. Teachers unlock chapters classroom-by-classroom; students can only use AI tutorials, doubt chat, quizzes, and teach-back mode for unlocked material. The differentiator is the deterministic Confusion Forecast Engine: it predicts which upcoming concepts students are likely to struggle with from decayed prerequisite mastery before the lesson starts.
+Slate is a multi-tenant school platform that unifies everyday school operations with an AI
+learning engine. Schools, tuition institutes, and individual learners each get a tailored
+experience over one system — from admissions and fees to teaching, and to **ConfusionLayer**,
+the AI engine that predicts and clears student confusion *before* it derails a lesson.
 
-## Current Status
+**Live:** https://confusionlayer.znova.in
 
-The live demo foundation and core learning loop are scaffolded in this repository:
+> **Status — active development.** The AI learning core (teacher-gated tutoring, misconception
+> diagnosis, teach-back, the Confusion Forecast Engine, and student progress) is built and live.
+> The full platform — marketing site, real multi-tenant auth, the role hierarchy, curriculum
+> authoring/import, and the ERP modules (admissions, fees, HR) — is being built out per the
+> roadmap below and detailed in `PRODUCT_PLAN.md`.
 
-- Docker Compose stack with `postgres`, `backend`, and `frontend`.
-- FastAPI backend with auth, syllabus, chapter unlock, concept detail, tutorial, doubt chat, and quiz grading endpoints.
-- Vue 3 + TypeScript + Vite + Pinia + Tailwind frontend for demo login, syllabus tree, teacher unlock, concept detail, tutorial, doubt chat, and quiz view.
-- Static frontend container with API reverse proxy; the live VM keeps nginx on public `80/443`.
-- SQLAlchemy models for the Project Spec Section 4 schema.
-- Alembic initialized with the first migration.
-- Idempotent Night 1 seed script for the demo classroom data.
-- Deterministic mastery formula implemented as pure tested backend code.
-- Codex CLI structured-output contracts for tutorial, progressive doubt chat, and quiz grading.
-- JWT auth with HttpOnly cookie storage, bearer-token fallback, and `admin`/`teacher`/`student` roles.
-- `.env.example` for private deployment values.
-- `scripts/redeploy.sh` for one-command redeploys on the VM.
+## Who it's for
 
-The Oracle VM at `80.225.232.209` is reachable, has Docker + Docker Compose installed, and serves ConfusionLayer at `https://confusionlayer.znova.in` through the VM's existing nginx reverse proxy.
+Slate is one engine, packaged for three segments:
 
-## Curriculum Source Strategy
+- **Schools** — the full stack: an org hierarchy (Owner → School Admin → Accountant / HR /
+  Teachers → Students, plus Parents), admissions, fees & accounting, HR & payroll, and the
+  learning platform.
+- **Tuition institutes** — the teaching + learning core (teachers and students), with optional
+  fee tracking.
+- **Individual learners** — self-serve access to the ConfusionLayer learning experience.
 
-ConfusionLayer should be official-aligned, not a copy of textbook content.
+All plans are currently free.
 
-Use official public sources for structure and links:
+## ConfusionLayer — the AI learning engine
 
-- CBSE Academic curriculum, including the 2026-27 Class X Science curriculum: https://cbseacademic.nic.in/curriculum_2027.html
-- NCERT textbook portal for Classes I-XII and chapter/textbook PDFs: https://ncert.nic.in/textbook.php?ln=en
-- ePathshala for NCERT e-resources: https://epathshala.nic.in/
+The differentiator. Instead of only reacting after a student struggles, ConfusionLayer
+**forecasts** which upcoming concepts a learner is likely to find hard — from decayed mastery
+of prerequisite concepts — and briefs the teacher before the lesson.
 
-Safe usage for this prototype:
+- **Teacher-gated AI:** tutorials, Socratic doubt chat (progressive scaffolding), quizzes with
+  fixed-taxonomy misconception diagnosis, and teach-back grading.
+- **Confusion Forecast Engine:** deterministic graph propagation over the prerequisite map
+  (not GPT) that predicts per-concept difficulty. The AI *names* the misconception; the system
+  *computes* the mastery and forecast numbers.
+- **Teacher briefs:** a predictive Forecast Brief (pre-lesson) and a reactive Confusion Brief
+  (aggregated, privacy-thresholded — never individual student names).
+- **For students:** mastery-over-time progress and self-start tutorials for any topic.
 
-- Use board, class, subject, chapter titles, concept names, and syllabus structure.
-- Link users to official NCERT/ePathshala resources where useful.
-- Store our own concept summaries, learning objectives, allowed/excluded scope, misconception taxonomy, questions, rubrics, and examples.
-- Let GPT-5.6 generate tutorials/questions only from structured concept records, not from a bare chapter name.
+## Roles & access
 
-Avoid:
+Per organization: **Owner, School Admin, Accountant, HR/Staff Manager, Teacher, Student,
+Parent** — plus a cross-org **Platform Admin**. Access is role-gated in the UI and authorized
+on the backend, with strict per-organization data isolation.
 
-- Committing NCERT PDFs or copied chapter files.
-- Storing complete textbook chapters in the DB.
-- Copying long textbook passages, diagrams, illustrations, or end-of-chapter questions in bulk.
-- Using CBSE/NCERT branding in a way that implies endorsement.
+## Curriculum
 
-Planned content pipeline:
+Curriculum is dynamic and org-authorable: start from a shared library, author
+Subjects → Chapters → Topics manually, or **import a document (PDF)** that is auto-structured
+into a reviewable subject/chapter/topic tree. Only Owner / School Admin / Teacher roles manage
+curriculum.
 
-```text
-Official syllabus structure
-        ↓
-Manually curated concept map
-        ↓
-Original learning objectives + allowed/excluded scope
-        ↓
-GPT-5.6 generates tutorials/questions inside that scope
+## Tech stack
+
+- **Frontend:** Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind, Chart.js
+- **Backend:** FastAPI, SQLAlchemy, Alembic
+- **Database:** PostgreSQL
+- **AI:** GPT-5.6 via the Codex CLI (`codex exec`, structured output)
+- **Deployment:** Docker Compose on an Oracle Cloud VM behind nginx + Let's Encrypt
+
+## Repository layout
+
+```
+backend/    FastAPI app, SQLAlchemy models, Alembic migrations, eval harness, tests
+frontend/   Vue 3 single-page app
+scripts/    redeploy.sh
+docker-compose.yml + docker-compose.nginx.yml
 ```
 
-For the hackathon, keep scope tight: one board, one class, one subject, one highly polished functional chapter, plus locked downstream concepts where needed for the forecast engine. A broad automated curriculum importer is intentionally deferred until the core demo works.
+## Local development
 
-Disclaimer:
-
-> ConfusionLayer is an independent educational prototype and is not affiliated with or endorsed by CBSE or NCERT. Curriculum references are used for educational alignment. Official textbooks remain available through NCERT and ePathshala.
-
-## Project Spec Alignment
-
-The implementation is tracking `../PROJECT_SPEC.md`.
-
-Night 1 / Section 3.1:
-
-- [x] Oracle VM reachable by SSH at `ubuntu@80.225.232.209`.
-- [x] Public IP confirmed as `80.225.232.209`.
-- [x] Docker installed on the VM.
-- [x] Docker Compose installed on the VM.
-- [x] `docker-compose.yml` created with `postgres`, `backend`, and `frontend`.
-- [x] Postgres runs on the internal Docker network only; no host port is exposed by this stack.
-- [x] `.env.example` created; real `.env` stays uncommitted.
-- [x] Redeploy script created.
-- [x] ConfusionLayer subdomain DNS record created.
-- [x] HTTPS confirmed on the final ConfusionLayer domain through nginx + Let's Encrypt.
-- [x] Phone-on-mobile-data acceptance test passed.
-- [x] SQLAlchemy models created for the full Section 4 schema.
-- [x] Alembic initialized.
-- [x] First migration created.
-- [x] Seed script written.
-- [x] Misconception taxonomy hand-written for all seeded concepts.
-- [x] Local seed acceptance test passed.
-
-Live placeholder:
-
-```text
-https://confusionlayer.znova.in
-```
-
-Backend health:
-
-```text
-https://confusionlayer.znova.in/api/health
-```
-
-Auth endpoints:
-
-- `POST /api/auth/signup` with JSON `{ "email", "password", "role": "admin|teacher|student", "name" }`
-- `POST /api/auth/login` with JSON `{ "email", "password" }`
-- `POST /api/auth/demo` with JSON `{ "role": "teacher|student" }`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-
-Auth responses include a bearer token and set an `access_token` HttpOnly cookie. API requests may authenticate with either the cookie or `Authorization: Bearer <token>`.
-
-Core learning endpoints:
-
-- `GET /api/demo/context`
-- `GET /api/student/syllabus`
-- `POST /api/teacher/classrooms/{classroom_id}/chapters/{chapter_id}/unlock`
-- `GET /api/concepts/{concept_id}`
-- `POST /api/concepts/{concept_id}/tutorial`
-- `POST /api/concepts/{concept_id}/doubt-chat`
-- `POST /api/concepts/{concept_id}/quiz/grade`
-- `POST /api/concepts/{concept_id}/teach-back/grade`
-- `POST /api/teacher/classrooms/{classroom_id}/forecasts/recompute`
-
-The AI endpoints call Codex CLI (`codex exec`) with the configured model and output schema, and are protected by the per-user daily AI call limit. There is no Platform API fallback path.
-
-Structured AI contracts currently wired:
-
-- Tutorial: `{ explanation, worked_example }`
-- Doubt chat: `{ response, response_type }` with response type selected deterministically by backend turn count
-- Quiz grade: `{ is_correct, misconception_code, misconception_summary, confidence, follow_up_question }`, with backend validation that `misconception_code` is null or in the fixed taxonomy
-- Teach-back grade: `{ clarity_score, accuracy_score, gap_identified, encouragement }`, persisted to `TeachBackAttempt`
-
-Deterministic backend engines currently wired:
-
-- Mastery formula: computes learner mastery from quiz/open-answer/misconception/retention signals.
-- Forecast engine: computes upcoming concept difficulty from prerequisite mastery decay and stores `ForecastRecord` rows. GPT does not compute the forecast number.
-
-## Stack
-
-- Frontend: Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind
-- Backend: FastAPI
-- Database: PostgreSQL
-- Deployment: Docker Compose on Oracle Cloud VM
-- Edge/static serving: nginx on the live VM, with the frontend container bound internally
-
-## Local Setup
-
-Copy the env template:
+Prerequisites: Docker + Docker Compose. For live AI, run `codex login` on the host first (the
+backend mounts `~/.codex`).
 
 ```bash
 cp .env.example .env
-```
-
-Start the stack:
-
-```bash
 docker compose up -d --build
+curl http://localhost/api/health      # smoke test
+# open http://localhost
 ```
 
-Smoke test:
+Apply migrations and load demo data (inside the backend container):
 
 ```bash
-curl http://localhost/api/health
+docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.seed
 ```
 
-Open:
-
-```text
-http://localhost
-```
-
-Run database migrations:
+Run backend tests:
 
 ```bash
-export PYTHONPATH=backend
-alembic upgrade head
+cd backend && python -m pytest
 ```
 
-Inside the backend container:
+## Configuration
 
-```bash
-python -m alembic -c alembic.ini upgrade head
+All configuration lives in `.env` (never committed). See `.env.example`:
+
 ```
-
-Load the Night 1 demo seed data:
-
-```bash
-export PYTHONPATH=backend
-python -m app.seed
-```
-
-Local seed acceptance result from 2026-07-14:
-
-- 1 subject, 3 chapters, 15 concepts, 15 concept edges.
-- 45 fixed misconception taxonomy rows.
-- 10 seeded students.
-- 30 quiz attempts and 150 mastery records.
-- Clustered misconceptions: `BAL_SUBSCRIPT_CHANGE` and `RXN_ELECTRONEGATIVITY_CONFUSION` each appear for 3 different students on the same concept.
-- Mastery review dates span 33 days.
-
-Run backend unit tests:
-
-```bash
-PYTHONPATH=backend python -m unittest discover -s backend/tests -v
-```
-
-## Environment Variables
-
-Required values live in `.env` and must not be committed.
-
-```bash
-SITE_DOMAIN=localhost
-POSTGRES_DB=confusionlayer
-POSTGRES_USER=confusionlayer
-POSTGRES_PASSWORD=change-me
-DATABASE_URL=postgresql+psycopg://confusionlayer:change-me@postgres:5432/confusionlayer
-CODEX_MODEL=gpt-5.6-luna
-CODEX_TIMEOUT_SECONDS=90
-AI_DAILY_CALL_LIMIT=50
-JWT_SECRET=change-this-to-a-long-random-secret
-JWT_EXPIRES_HOURS=24
-AUTH_COOKIE_SECURE=0
+SITE_DOMAIN, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, DATABASE_URL,
+CODEX_MODEL, CODEX_TIMEOUT_SECONDS, AI_DAILY_CALL_LIMIT,
+JWT_SECRET, JWT_EXPIRES_HOURS, AUTH_COOKIE_SECURE
 ```
 
 Use `AUTH_COOKIE_SECURE=1` on HTTPS deployments.
 
-The backend Docker container mounts `${HOME}/.codex` into `/root/.codex`, so run `codex login` on the host before starting the stack. The VM production login should use the ChatGPT Plus account.
+## Deployment
 
-## Oracle VM Deployment Notes
-
-SSH:
-
-```bash
-ssh -i ~/.ssh/oracle_key ubuntu@80.225.232.209
-```
-
-Observed on 2026-07-14:
-
-- OS: Ubuntu 24.04.4 LTS
-- Docker: installed
-- Docker Compose: installed
-- Current public IP: `80.225.232.209`
-- Current `A` records:
-  - `znova.in -> 80.225.232.209`
-  - `www.znova.in -> 80.225.232.209`
-  - `confusionlayer.znova.in -> 80.225.232.209`
-- Existing listeners:
-  - `22` SSH
-  - `443` nginx for `znova.in`
-  - `8080` nginx/backend path for the existing project
-  - `8000` uvicorn for the existing project
-  - `5432` local-only Postgres
-- Public `80/443` are handled by nginx; ConfusionLayer runs internally on `127.0.0.1:18080`.
-
-### DNS/Subdomain Work Needed
-
-DNS record now points to the VM:
-
-```text
-confusionlayer.znova.in  A  80.225.232.209
-```
-
-Alternative if using DuckDNS:
-
-```text
-your-confusionlayer-name.duckdns.org  A  80.225.232.209
-```
-
-HTTPS is currently issued by Certbot/Let's Encrypt on nginx.
-
-### Port 80/443 Decision
-
-The VM uses nginx on public `80/443`. Keep ConfusionLayer behind the nginx override so the app stays internal and nginx owns public TLS.
-
-For the current VM, use the nginx override so the app stays internal and nginx owns public `80/443`:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
-```
-
-Do not run plain `docker compose up` on the VM while nginx is serving `znova.in`, because the base Compose file maps public `80/443`.
-
-Current VM deployment command:
-
-```bash
-cd /home/ubuntu/confusionlayer
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
-```
-
-## Redeploy
-
-After the repo is cloned on the VM and `.env` is created:
+Production runs via Docker Compose behind the VM's nginx (which owns public TLS), with the app
+bound to loopback. Redeploy with:
 
 ```bash
 ./scripts/redeploy.sh
 ```
 
-The script runs `docker-compose.nginx.yml` by default when it exists, so Oracle redeploys stay behind nginx:
+## Roadmap
 
-```bash
-git pull --ff-only
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml ps
-```
+Full plan in `PRODUCT_PLAN.md`. High level:
 
-For a direct local deployment that binds public `80/443`, run with:
+1. Design system (in code) + routing shell
+2. Multi-tenant data model + real auth / onboarding
+3. Segment marketing sites
+4. Learning core in the new app shell
+5. Curriculum authoring + PDF import
+6. Org admin, members & billing (free)
+7. ERP: Admissions → Fees / Accounting → HR / Payroll
+8. Parent portal, platform admin, polish
 
-```bash
-CONFUSIONLAYER_NGINX_PROXY=0 ./scripts/redeploy.sh
-```
+## Evaluation
 
-## Runtime Endpoints
+The ConfusionLayer grader/tutor has a fixed evaluation set in `backend/app/eval/`
+(correct / partial / misconception grading + doubt-chat redirect and turn-1 leak checks) with
+pure, mock-tested scoring and a live runner (`python -m app.eval.run_eval`).
 
-- Frontend: `/`
-- Backend health: `/api/health`
+## Curriculum sources & disclaimer
 
-## Evaluation Table
+Slate aligns to official public curriculum *structure* (e.g., CBSE / NCERT) without copying
+textbook content — structure, titles, and links only; all learner-facing content is original
+or AI-generated within a defined scope.
 
-Fixed test set lives in `backend/app/eval/` (30 grader cases: 10 correct, 10
-partial, 10 misconception; 5 off-topic and 5 turn-1-leak doubt cases). Scoring
-is pure and unit-tested with mocks; the live runner calls the real Codex-backed
-grader/tutor. Run it inside the backend container:
-
-```bash
-# full set (~40 live Codex calls)
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml exec backend python -m app.eval.run_eval
-# capped sample (cheap smoke) — N cases per category
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml exec backend python -m app.eval.run_eval --sample 2
-```
-
-**Results below are from a live `--sample 2` run (10 Codex calls)**, capped to
-protect the hackathon Codex budget. Numbers are real for the sample run; the
-denominators are the sample sizes, not the full 30/5. The full run is one command
-away (above). Doubt-chat rows use a turn-1 scaffolding heuristic — confirm
-borderline cases by eye.
-
-| Metric | Result (sample) |
-|---|---:|
-| Structured output success | 6 / 6 |
-| Correctness classification accuracy (correct + misconception) | 4 / 4 |
-| Partial answers handled gracefully | 2 / 2 |
-| Misconception code match accuracy | 2 / 2 |
-| Out-of-scope redirection (heuristic) | 2 / 2 |
-| Turn-1 direct-answer leakage (target 0) | 0 / 2 |
-| Forecast engine sensitivity check | pass (unit test, Section 8) |
+> Slate / ConfusionLayer is an independent educational product and is not affiliated with or
+> endorsed by CBSE or NCERT. Curriculum references are used for educational alignment. Official
+> textbooks remain available through NCERT and ePathshala.

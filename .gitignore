@@ -15,9 +15,10 @@ venv/
 *.pyo
 *.log
 
-# AI agent / instruction docs — kept local, never pushed.
-# These drive the AI assistants (rules, spec, infra, design) and are not
-# project source to ship. Add any new AI-instruction doc to this list.
+# AI agent / internal instruction docs — kept local, never pushed.
+# These drive the AI assistants (rules, hackathon spec, infra) and are not
+# product docs to ship. Add any new AI-instruction doc to this list.
+# NOTE: PRODUCT_PLAN.md and DESIGN.md are intentionally tracked (public product docs).
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
@@ -25,4 +26,3 @@ PROJECT_SPEC.md
 STATUS.md
 .claude/
 INFRASTRUCTURE.md
-DESIGN.md
