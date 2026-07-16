@@ -1,9 +1,10 @@
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -58,11 +59,14 @@ from app.models import (
     ConfusionBrief,
     MasteryHistory,
     MasteryRecord,
+    Invitation,
     MisconceptionTaxonomy,
     Organization,
+    Plan,
     QuizAttempt,
     Student,
     Subject,
+    Subscription,
     TeachBackAttempt,
     User,
 )
@@ -360,6 +364,62 @@ class ImportDraftResponse(BaseModel):
     chapters: list[DraftChapterModel]
 
 
+class PlanResponse(BaseModel):
+    code: str
+    name: str
+    segment: str
+    price_cents: int
+    limits: dict[str, object]
+    features: list[str]
+
+
+class OrgUsageResponse(BaseModel):
+    members: int
+    students: int
+    classrooms: int
+
+
+class SubscriptionResponse(BaseModel):
+    status: str
+    plan: PlanResponse | None
+
+
+class OrgResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    segment: str
+    subscription: SubscriptionResponse | None
+    usage: OrgUsageResponse
+
+
+class MemberResponse(BaseModel):
+    id: int
+    name: str | None
+    email: str
+    role: str
+    status: str
+
+
+class PendingInvitationResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+
+
+class MembersResponse(BaseModel):
+    members: list[MemberResponse]
+    pending: list[PendingInvitationResponse]
+
+
+class ChangeRoleRequest(BaseModel):
+    role: Literal["school_admin", "accountant", "hr", "teacher", "parent"]
+
+
+class ChangePlanRequest(BaseModel):
+    plan_code: str
+
+
 @app.get("/api/health")
 def health() -> dict[str, str | bool | int]:
     return {
@@ -449,6 +509,20 @@ def create_org_invitation(
     organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
     if not organization:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No organization for this user")
+
+    # Plan gating: don't let a student invite push the org past its plan's student cap.
+    if payload.role == "student":
+        subscription = _org_subscription(db, organization.id)
+        plan = db.get(Plan, subscription.plan_id) if subscription else None
+        max_students = (plan.limits or {}).get("max_students") if plan else None
+        if isinstance(max_students, int):
+            current_students = db.scalar(select(func.count(User.id)).where(User.org_id == organization.id, User.role == "student")) or 0
+            if current_students >= max_students:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Your plan allows {max_students} students. Upgrade to invite more.",
+                )
+
     invitation = create_invitation(db, organization, current_user, payload.email, payload.role)
     return {"token": invitation.token, "email": invitation.email, "role": invitation.role}
 
@@ -1094,6 +1168,112 @@ def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = 
     drafts = [DraftChapter(title=chapter.title, topics=list(chapter.topics)) for chapter in payload.chapters]
     subject = commit_subject_tree(db, current_user.org_id, payload.name, payload.board, payload.class_level, drafts)
     return _subject_tree_response(subject)
+
+
+ORG_ADMIN_ROLES = {"owner", "school_admin", "admin"}
+OWNER_ROLES = {"owner", "admin"}
+
+
+def _require_org_admin(user: User) -> None:
+    if user.role not in ORG_ADMIN_ROLES or not user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an owner or school admin can manage the organization")
+
+
+def _current_org(db: Session, user: User) -> Organization:
+    org = db.get(Organization, user.org_id) if user.org_id else None
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No organization for this user")
+    return org
+
+
+def _plan_response(plan: Plan) -> PlanResponse:
+    return PlanResponse(
+        code=plan.code, name=plan.name, segment=plan.segment, price_cents=plan.price_cents, limits=plan.limits or {}, features=list(plan.features or [])
+    )
+
+
+def _org_usage(db: Session, org_id: int) -> OrgUsageResponse:
+    members = db.scalar(select(func.count(User.id)).where(User.org_id == org_id)) or 0
+    students = db.scalar(select(func.count(User.id)).where(User.org_id == org_id, User.role == "student")) or 0
+    classrooms = db.scalar(select(func.count(Classroom.id)).where(Classroom.org_id == org_id)) or 0
+    return OrgUsageResponse(members=int(members), students=int(students), classrooms=int(classrooms))
+
+
+def _org_subscription(db: Session, org_id: int) -> Subscription | None:
+    return db.scalar(select(Subscription).where(Subscription.org_id == org_id))
+
+
+@app.get("/api/org", response_model=OrgResponse)
+def get_org(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> OrgResponse:
+    _require_org_admin(current_user)
+    org = _current_org(db, current_user)
+    subscription = _org_subscription(db, org.id)
+    sub_response = None
+    if subscription:
+        plan = db.get(Plan, subscription.plan_id)
+        sub_response = SubscriptionResponse(status=subscription.status, plan=_plan_response(plan) if plan else None)
+    return OrgResponse(
+        id=org.id, name=org.name, slug=org.slug, segment=org.segment, subscription=sub_response, usage=_org_usage(db, org.id)
+    )
+
+
+@app.get("/api/org/members", response_model=MembersResponse)
+def list_org_members(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MembersResponse:
+    _require_org_admin(current_user)
+    members = db.scalars(select(User).where(User.org_id == current_user.org_id).order_by(User.id)).all()
+    pending = db.scalars(
+        select(Invitation).where(Invitation.org_id == current_user.org_id, Invitation.accepted_at.is_(None)).order_by(Invitation.id)
+    ).all()
+    return MembersResponse(
+        members=[MemberResponse(id=m.id, name=m.name, email=m.email, role=m.role, status=m.status) for m in members],
+        pending=[PendingInvitationResponse(id=p.id, email=p.email, role=p.role) for p in pending],
+    )
+
+
+@app.post("/api/org/members/{user_id}/role", response_model=MemberResponse)
+def change_member_role(user_id: int, payload: ChangeRoleRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
+    _require_org_admin(current_user)
+    member = db.get(User, user_id)
+    if not member or member.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.role == "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The owner's role cannot be changed")
+    if member.role in ("teacher", "student") or payload.role in ("teacher", "student"):
+        # profile-linked roles are provisioned at signup/invite; don't remap them here
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher/student roles are set at invitation time")
+    member.role = payload.role
+    db.commit()
+    db.refresh(member)
+    return MemberResponse(id=member.id, name=member.name, email=member.email, role=member.role, status=member.status)
+
+
+@app.get("/api/plans", response_model=list[PlanResponse])
+def list_plans(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[PlanResponse]:
+    _require_org_admin(current_user)
+    org = _current_org(db, current_user)
+    plans = db.scalars(select(Plan).where(Plan.segment == org.segment).order_by(Plan.id)).all()
+    return [_plan_response(p) for p in plans]
+
+
+@app.post("/api/org/subscription", response_model=SubscriptionResponse)
+def change_subscription(payload: ChangePlanRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SubscriptionResponse:
+    if current_user.role not in OWNER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the owner can change the plan")
+    org = _current_org(db, current_user)
+    plan = db.scalar(select(Plan).where(Plan.code == payload.plan_code))
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    if plan.segment != org.segment:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That plan is for a different segment")
+    subscription = _org_subscription(db, org.id)
+    if subscription:
+        subscription.plan_id = plan.id
+        subscription.status = "active"
+    else:
+        subscription = Subscription(org_id=org.id, plan_id=plan.id, status="active")
+        db.add(subscription)
+    db.commit()
+    return SubscriptionResponse(status="active", plan=_plan_response(plan))
 
 
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:

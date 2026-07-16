@@ -35,6 +35,9 @@ const routes: RouteRecordRaw[] = [
       { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue") },
       { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue") },
       { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue") },
+      // Org settings
+      { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue") },
+      { path: "settings/billing", name: "settings-billing", component: () => import("../views/app/settings/BillingView.vue") },
       { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue") },
       { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue") },
     ],

@@ -14,12 +14,16 @@ const links = computed(() => {
       { to: "/app/progress", label: "My progress" },
     ];
   }
-  return [
+  const items = [
     { to: "/app/teacher", label: "Classroom" },
     { to: "/app/curriculum", label: "Curriculum" },
     { to: "/app/teacher/forecast", label: "Forecast brief" },
     { to: "/app/teacher/confusion", label: "Confusion brief" },
   ];
+  if (session.isOrgAdmin) {
+    items.push({ to: "/app/settings/members", label: "Members" }, { to: "/app/settings/billing", label: "Plan & billing" });
+  }
+  return items;
 });
 </script>
 

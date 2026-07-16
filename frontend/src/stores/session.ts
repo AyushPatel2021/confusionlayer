@@ -218,6 +218,38 @@ export interface DraftChapter {
   topics: string[];
 }
 
+export interface OrgPlan {
+  code: string;
+  name: string;
+  segment: string;
+  price_cents: number;
+  limits: Record<string, number>;
+  features: string[];
+}
+
+export interface OrgInfo {
+  id: number;
+  name: string;
+  slug: string;
+  segment: string;
+  subscription: { status: string; plan: OrgPlan | null } | null;
+  usage: { members: number; students: number; classrooms: number };
+}
+
+export interface OrgMember {
+  id: number;
+  name: string | null;
+  email: string;
+  role: string;
+  status: string;
+}
+
+export interface PendingInvite {
+  id: number;
+  email: string;
+  role: string;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -245,6 +277,10 @@ export const useSessionStore = defineStore("session", {
     curriculumSubjects: [] as CurriculumSubject[],
     curriculumTree: null as CurriculumTree | null,
     importDraft: null as DraftChapter[] | null,
+    org: null as OrgInfo | null,
+    members: [] as OrgMember[],
+    pendingInvites: [] as PendingInvite[],
+    plans: [] as OrgPlan[],
     loading: "",
     error: "",
   }),
@@ -254,6 +290,8 @@ export const useSessionStore = defineStore("session", {
       ["teacher", "owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
     isStudent: (state) => state.user?.role === "student",
     isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "platform_admin",
+    isOrgAdmin: (state) => ["owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
+    isOwner: (state) => state.user?.role === "owner" || state.user?.role === "admin",
     roleHome: (state) => (state.user?.role === "student" ? "/app/learn" : "/app/teacher"),
   },
   actions: {
@@ -749,6 +787,79 @@ export const useSessionStore = defineStore("session", {
       } catch (error) {
         this.error = messageFromError(error);
         return null;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadOrg() {
+      this.loading = "org";
+      this.error = "";
+      try {
+        this.org = await api<OrgInfo>("/api/org", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadMembers() {
+      this.loading = "members";
+      this.error = "";
+      try {
+        const data = await api<{ members: OrgMember[]; pending: PendingInvite[] }>("/api/org/members", { token: this.token });
+        this.members = data.members;
+        this.pendingInvites = data.pending;
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async inviteMember(email: string, role: string): Promise<boolean> {
+      this.loading = "invite-member";
+      this.error = "";
+      try {
+        await api("/api/org/invitations", { method: "POST", token: this.token, body: JSON.stringify({ email, role }) });
+        await this.loadMembers();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async changeMemberRole(userId: number, role: string) {
+      this.loading = `member-role-${userId}`;
+      this.error = "";
+      try {
+        await api(`/api/org/members/${userId}/role`, { method: "POST", token: this.token, body: JSON.stringify({ role }) });
+        await this.loadMembers();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadPlans() {
+      this.loading = "plans";
+      this.error = "";
+      try {
+        this.plans = await api<OrgPlan[]>("/api/plans", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async changePlan(planCode: string) {
+      this.loading = `plan-${planCode}`;
+      this.error = "";
+      try {
+        await api("/api/org/subscription", { method: "POST", token: this.token, body: JSON.stringify({ plan_code: planCode }) });
+        await this.loadOrg();
+      } catch (error) {
+        this.error = messageFromError(error);
       } finally {
         this.loading = "";
       }
