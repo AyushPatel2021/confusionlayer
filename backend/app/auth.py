@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Student, Teacher, User
+from app.models import Organization, Student, Teacher, User
 
 Role = Literal["admin", "teacher", "student"]
 ACCESS_TOKEN_COOKIE = "access_token"
@@ -211,16 +211,18 @@ def get_or_create_demo_user(db: Session, role: Literal["teacher", "student"]) ->
     if existing:
         return existing
 
+    org = db.scalar(select(Organization).order_by(Organization.id))
+    org_id = org.id if org else None
     if role == "teacher":
         teacher = db.scalar(select(Teacher).order_by(Teacher.id))
         if not teacher:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo teacher seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id)
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id)
     else:
         student = db.scalar(select(Student).order_by(Student.id))
         if not student:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo student seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id)
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id)
 
     db.add(user)
     db.commit()

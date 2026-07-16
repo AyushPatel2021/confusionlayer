@@ -95,7 +95,9 @@ org-scoped** (strict tenant isolation, tested); Platform Admin is a separate ele
 
 ## 4. Data model (by module — key entities)
 
-**Tenancy/auth:** Organization `{id,name,slug,segment}` · Membership `{user,org,role,status}` ·
+**Tenancy/auth:** Organization `{id,name,slug,segment}` · **(M1 decision)** membership is modeled
+directly on `User` (`org_id` + `role` + `status`, single org per user) rather than a separate
+Membership table; a Membership table is only needed if multi-org-per-user is ever required ·
 Plan `{code,segment,name,price_cents=0,limits(json),features[]}` · Subscription
 `{org,plan,status,current_period_end,provider=null}` · Invitation · PasswordReset · AuditLog.
 User gains `email_verified`, `status`; profile links generalized. Platform Admin = user with

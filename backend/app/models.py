@@ -11,6 +11,107 @@ class Base(DeclarativeBase):
     pass
 
 
+# Go-to-market segments; select which module bundle an org uses.
+ORG_SEGMENTS = ("school", "institute", "individual")
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    __table_args__ = (
+        CheckConstraint("segment IN ('school', 'institute', 'individual')", name="ck_org_segment_values"),
+        UniqueConstraint("slug", name="uq_org_slug"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    slug: Mapped[str] = mapped_column(String(160), nullable=False)
+    segment: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    users: Mapped[list[User]] = relationship(back_populates="organization")
+    classrooms: Mapped[list[Classroom]] = relationship(back_populates="organization")
+    subscription: Mapped[Subscription | None] = relationship(back_populates="organization")
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+    __table_args__ = (
+        CheckConstraint("segment IN ('school', 'institute', 'individual')", name="ck_plan_segment_values"),
+        CheckConstraint("price_cents >= 0", name="ck_plan_price_nonnegative"),
+        UniqueConstraint("code", name="uq_plan_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    segment: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    price_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    limits: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    features: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('trialing', 'active', 'past_due', 'canceled')", name="ck_subscription_status_values"
+        ),
+        UniqueConstraint("org_id", name="uq_subscription_org"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plans.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider_customer_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="subscription")
+    plan: Mapped[Plan] = relationship()
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    __table_args__ = (UniqueConstraint("token", name="uq_invitation_token"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(40), nullable=False)
+    token: Mapped[str] = mapped_column(String(120), nullable=False)
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    __table_args__ = (UniqueConstraint("token", name="uq_password_reset_token"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token: Mapped[str] = mapped_column(String(120), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action: Mapped[str] = mapped_column(String(120), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    audit_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Teacher(Base):
     __tablename__ = "teachers"
 
@@ -32,27 +133,38 @@ class Student(Base):
     user: Mapped[User | None] = relationship(back_populates="student")
 
 
+# Roles a user can hold in an organization (plus the cross-org platform admin).
+USER_ROLES = ("admin", "owner", "school_admin", "accountant", "hr", "teacher", "student", "parent", "platform_admin")
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'teacher', 'student')", name="ck_users_role_values"),
+        CheckConstraint(
+            "role IN ('admin', 'owner', 'school_admin', 'accountant', 'hr', 'teacher', 'student', 'parent', 'platform_admin')",
+            name="ck_users_role_values",
+        ),
         CheckConstraint(
             "(role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL) OR "
             "(role = 'student' AND student_id IS NOT NULL AND teacher_id IS NULL) OR "
-            "(role = 'admin' AND teacher_id IS NULL AND student_id IS NULL)",
+            "(role NOT IN ('teacher', 'student'))",
             name="ck_users_role_profile_link",
         ),
         UniqueConstraint("email", name="uq_users_email"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    organization: Mapped[Organization | None] = relationship(back_populates="users")
     teacher: Mapped[Teacher | None] = relationship(back_populates="user")
     student: Mapped[Student | None] = relationship(back_populates="user")
     ai_call_usage: Mapped[list[AiCallUsage]] = relationship(back_populates="user")
@@ -137,10 +249,12 @@ class Classroom(Base):
     __tablename__ = "classrooms"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     teacher_id: Mapped[int] = mapped_column(ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
 
+    organization: Mapped[Organization | None] = relationship(back_populates="classrooms")
     teacher: Mapped[Teacher] = relationship(back_populates="classrooms")
     subject: Mapped[Subject] = relationship(back_populates="classrooms")
     students: Mapped[list[ClassroomStudent]] = relationship(back_populates="classroom")

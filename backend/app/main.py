@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, Field
@@ -45,6 +46,7 @@ from app.models import (
     MasteryHistory,
     MasteryRecord,
     MisconceptionTaxonomy,
+    Organization,
     QuizAttempt,
     Student,
     Subject,
@@ -804,10 +806,38 @@ def student_progress(
     )
 
 
+@dataclass
+class CurrentContext:
+    user: User
+    organization: Organization | None
+    role: str
+
+
+def get_current_context(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CurrentContext:
+    organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
+    return CurrentContext(user=current_user, organization=organization, role=current_user.role)
+
+
+def _cross_org(user: User, classroom: Classroom) -> bool:
+    """True when both the user and the classroom are org-scoped and their orgs differ.
+
+    Platform admins (no org) are exempt. Multi-tenant isolation guarantee for M1;
+    tightened to non-null org_id in a later milestone.
+    """
+    if user.role == "platform_admin":
+        return False
+    return user.org_id is not None and classroom.org_id is not None and classroom.org_id != user.org_id
+
+
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:
     classroom = db.get(Classroom, classroom_id)
     if not classroom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    if _cross_org(user, classroom):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access another organization")
     if user.role == "student" or (user.role == "teacher" and classroom.teacher_id != user.teacher_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Not allowed to {action} for this classroom")
     return classroom
@@ -842,6 +872,8 @@ def _get_user_classroom(db: Session, user: User) -> Classroom:
         classroom = None
 
     if not classroom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No classroom is available for this user")
+    if _cross_org(user, classroom):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No classroom is available for this user")
     return classroom
 

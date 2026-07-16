@@ -18,10 +18,14 @@ from app.models import (
     MasteryHistory,
     MasteryRecord,
     MisconceptionTaxonomy,
+    Organization,
+    Plan,
     QuizAttempt,
     Student,
     Subject,
+    Subscription,
     Teacher,
+    User,
 )
 
 
@@ -405,11 +409,51 @@ def backfill_mastery_history(session: Session, weeks: int = 6) -> int:
     return created
 
 
+# All plans are priced at $0 for now; they differ by enabled modules + limits.
+PLANS = (
+    ("individual_free", "individual", "Individual — Free", {"max_students": 1, "max_classrooms": 1, "ai_calls_per_day": 50}, ["learning"]),
+    ("institute_free", "institute", "Institute — Free", {"max_students": 200, "max_classrooms": 20, "ai_calls_per_day": 50}, ["learning"]),
+    ("institute_plus_free", "institute", "Institute Plus — Free", {"max_students": 500, "max_classrooms": 50, "ai_calls_per_day": 50}, ["learning", "fees"]),
+    ("school_free", "school", "School — Free", {"max_students": 5000, "max_classrooms": 500, "ai_calls_per_day": 50}, ["learning", "curriculum", "admissions", "accounting", "hr", "parent"]),
+)
+
+DEMO_ORG_SLUG = "confusionlayer-demo"
+
+
+def backfill_tenancy(session: Session) -> dict[str, int]:
+    """Idempotently ensure plans, the demo organization, its subscription, and that
+    existing classrooms/users belong to an org. Safe to run against a live DB.
+    """
+    for code, segment, name, limits, features in PLANS:
+        get_or_create(session, Plan, code=code, defaults={"segment": segment, "name": name, "price_cents": 0, "limits": limits, "features": features})
+
+    org = get_or_create(session, Organization, slug=DEMO_ORG_SLUG, defaults={"name": "ConfusionLayer Demo", "segment": "school"})
+    school_plan = session.scalar(select(Plan).where(Plan.code == "school_free"))
+    get_or_create(session, Subscription, org_id=org.id, defaults={"plan_id": school_plan.id, "status": "active"})
+
+    attached_classrooms = 0
+    for classroom in session.scalars(select(Classroom).where(Classroom.org_id.is_(None))).all():
+        classroom.org_id = org.id
+        attached_classrooms += 1
+
+    attached_users = 0
+    for user in session.scalars(select(User).where(User.org_id.is_(None), User.role != "platform_admin")).all():
+        user.org_id = org.id
+        attached_users += 1
+
+    session.commit()
+    return {"classrooms": attached_classrooms, "users": attached_users}
+
+
 def main() -> None:
     with SessionLocal() as session:
         seed(session)
+        tenancy = backfill_tenancy(session)
         created = backfill_mastery_history(session)
-    print(f"Seed data ready. Mastery history points added: {created}.")
+    print(
+        f"Seed data ready. Tenancy backfill: {tenancy['classrooms']} classrooms, "
+        f"{tenancy['users']} users attached to the demo org. Mastery history points added: {created}."
+    )
 
 
 if __name__ == "__main__":
