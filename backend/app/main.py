@@ -58,11 +58,17 @@ from app.models import (
     ClassroomStudent,
     Concept,
     ConfusionBrief,
+    Employee,
+    FeeStructure,
+    Invitation,
+    Invoice,
     MasteryHistory,
     MasteryRecord,
-    Invitation,
     MisconceptionTaxonomy,
     Organization,
+    Payment,
+    PayrollRun,
+    Payslip,
     Plan,
     QuizAttempt,
     Student,
@@ -442,6 +448,99 @@ class ApplicationResponse(BaseModel):
     student_id: int | None
     created_at: datetime
     updated_at: datetime
+
+
+# --- M8: fees ---
+class FeeStructureCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    amount_cents: int = Field(ge=0)
+
+
+class FeeStructureResponse(BaseModel):
+    id: int
+    name: str
+    amount_cents: int
+
+
+class InvoiceCreateRequest(BaseModel):
+    recipient_name: str = Field(min_length=1, max_length=160)
+    amount_cents: int = Field(ge=0)
+    description: str | None = Field(default=None, max_length=255)
+    student_id: int | None = None
+    due_date: date | None = None
+
+
+class PaymentCreateRequest(BaseModel):
+    amount_cents: int = Field(gt=0)
+    method: str | None = Field(default=None, max_length=60)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class InvoiceResponse(BaseModel):
+    id: int
+    recipient_name: str
+    description: str | None
+    amount_cents: int
+    paid_cents: int
+    status: str
+    voided: bool
+    due_date: date | None
+    created_at: datetime
+
+
+class FeesSummaryResponse(BaseModel):
+    billed_cents: int
+    collected_cents: int
+    outstanding_cents: int
+    invoice_count: int
+
+
+# --- M9: HR ---
+class EmployeeCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    email: str | None = Field(default=None, max_length=255)
+    designation: str | None = Field(default=None, max_length=120)
+    salary_cents: int = Field(default=0, ge=0)
+
+
+class EmployeeStatusRequest(BaseModel):
+    status: Literal["active", "inactive"]
+
+
+class PayrollRunCreateRequest(BaseModel):
+    period: str = Field(min_length=1, max_length=20)
+
+
+class EmployeeResponse(BaseModel):
+    id: int
+    name: str
+    email: str | None
+    designation: str | None
+    salary_cents: int
+    status: str
+
+
+class PayslipResponse(BaseModel):
+    id: int
+    employee_name: str
+    gross_cents: int
+    net_cents: int
+
+
+class PayrollRunResponse(BaseModel):
+    id: int
+    period: str
+    status: str
+    payslip_count: int
+    total_net_cents: int
+    created_at: datetime
+
+
+class PayrollRunDetailResponse(BaseModel):
+    id: int
+    period: str
+    status: str
+    payslips: list[PayslipResponse]
 
 
 @app.get("/api/health")
@@ -1408,6 +1507,239 @@ def enroll_application(application_id: int, current_user: User = Depends(get_cur
     db.commit()
     db.refresh(application)
     return _application_response(application)
+
+
+FEES_ROLES = {"owner", "school_admin", "accountant", "admin"}
+HR_ROLES = {"owner", "school_admin", "hr", "admin"}
+
+
+def _require_roles(user: User, roles: set[str]) -> None:
+    if user.role not in roles or not user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this module")
+
+
+# ---- M8: Fees & accounting ----
+
+
+def _paid_cents_map(db: Session, org_id: int) -> dict[int, int]:
+    rows = db.execute(
+        select(Payment.invoice_id, func.sum(Payment.amount_cents)).where(Payment.org_id == org_id).group_by(Payment.invoice_id)
+    ).all()
+    return {invoice_id: int(total or 0) for invoice_id, total in rows}
+
+
+def _invoice_status(amount_cents: int, paid_cents: int, voided: bool) -> str:
+    if voided:
+        return "void"
+    if amount_cents == 0 or paid_cents >= amount_cents:
+        return "paid"
+    if paid_cents > 0:
+        return "partial"
+    return "unpaid"
+
+
+def _invoice_response(invoice: Invoice, paid_cents: int) -> InvoiceResponse:
+    return InvoiceResponse(
+        id=invoice.id,
+        recipient_name=invoice.recipient_name,
+        description=invoice.description,
+        amount_cents=invoice.amount_cents,
+        paid_cents=paid_cents,
+        status=_invoice_status(invoice.amount_cents, paid_cents, invoice.voided),
+        voided=invoice.voided,
+        due_date=invoice.due_date,
+        created_at=invoice.created_at,
+    )
+
+
+def _owned_invoice(db: Session, user: User, invoice_id: int) -> Invoice:
+    _require_roles(user, FEES_ROLES)
+    _require_module(db, user, "accounting")
+    invoice = db.get(Invoice, invoice_id)
+    if not invoice or invoice.org_id != user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    return invoice
+
+
+@app.get("/api/fees/structures", response_model=list[FeeStructureResponse])
+def list_fee_structures(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[FeeStructureResponse]:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    rows = db.scalars(select(FeeStructure).where(FeeStructure.org_id == current_user.org_id).order_by(FeeStructure.id)).all()
+    return [FeeStructureResponse(id=r.id, name=r.name, amount_cents=r.amount_cents) for r in rows]
+
+
+@app.post("/api/fees/structures", response_model=FeeStructureResponse, status_code=status.HTTP_201_CREATED)
+def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FeeStructureResponse:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    structure = FeeStructure(org_id=current_user.org_id, name=payload.name.strip(), amount_cents=payload.amount_cents)
+    db.add(structure)
+    db.commit()
+    db.refresh(structure)
+    return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
+
+
+@app.get("/api/fees/invoices", response_model=list[InvoiceResponse])
+def list_invoices(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[InvoiceResponse]:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    invoices = db.scalars(select(Invoice).where(Invoice.org_id == current_user.org_id).order_by(Invoice.id.desc())).all()
+    paid = _paid_cents_map(db, current_user.org_id)
+    return [_invoice_response(inv, paid.get(inv.id, 0)) for inv in invoices]
+
+
+@app.post("/api/fees/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    invoice = Invoice(
+        org_id=current_user.org_id,
+        student_id=payload.student_id,
+        recipient_name=payload.recipient_name.strip(),
+        description=(payload.description or "").strip() or None,
+        amount_cents=payload.amount_cents,
+        due_date=payload.due_date,
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_response(invoice, 0)
+
+
+@app.post("/api/fees/invoices/{invoice_id}/payments", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+def record_payment(invoice_id: int, payload: PaymentCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
+    invoice = _owned_invoice(db, current_user, invoice_id)
+    if invoice.voided:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot record a payment against a voided invoice")
+    db.add(Payment(org_id=invoice.org_id, invoice_id=invoice.id, amount_cents=payload.amount_cents, method=payload.method, note=payload.note))
+    db.commit()
+    paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
+    return _invoice_response(invoice, int(paid))
+
+
+@app.post("/api/fees/invoices/{invoice_id}/void", response_model=InvoiceResponse)
+def void_invoice(invoice_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
+    invoice = _owned_invoice(db, current_user, invoice_id)
+    invoice.voided = True
+    db.commit()
+    paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
+    return _invoice_response(invoice, int(paid))
+
+
+@app.get("/api/fees/summary", response_model=FeesSummaryResponse)
+def fees_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FeesSummaryResponse:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    invoices = db.scalars(select(Invoice).where(Invoice.org_id == current_user.org_id, Invoice.voided.is_(False))).all()
+    paid = _paid_cents_map(db, current_user.org_id)
+    billed = sum(inv.amount_cents for inv in invoices)
+    collected = sum(min(paid.get(inv.id, 0), inv.amount_cents) for inv in invoices)
+    return FeesSummaryResponse(billed_cents=billed, collected_cents=collected, outstanding_cents=max(0, billed - collected), invoice_count=len(invoices))
+
+
+# ---- M9: HR & payroll ----
+
+
+@app.get("/api/hr/employees", response_model=list[EmployeeResponse])
+def list_employees(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[EmployeeResponse]:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    rows = db.scalars(select(Employee).where(Employee.org_id == current_user.org_id).order_by(Employee.id)).all()
+    return [EmployeeResponse(id=e.id, name=e.name, email=e.email, designation=e.designation, salary_cents=e.salary_cents, status=e.status) for e in rows]
+
+
+@app.post("/api/hr/employees", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
+def create_employee(payload: EmployeeCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> EmployeeResponse:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    employee = Employee(
+        org_id=current_user.org_id,
+        name=payload.name.strip(),
+        email=(payload.email or "").strip() or None,
+        designation=(payload.designation or "").strip() or None,
+        salary_cents=payload.salary_cents,
+    )
+    db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+
+
+@app.post("/api/hr/employees/{employee_id}/status", response_model=EmployeeResponse)
+def set_employee_status(employee_id: int, payload: EmployeeStatusRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> EmployeeResponse:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    employee.status = payload.status
+    db.commit()
+    db.refresh(employee)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+
+
+@app.get("/api/hr/payroll", response_model=list[PayrollRunResponse])
+def list_payroll_runs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[PayrollRunResponse]:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    runs = db.scalars(select(PayrollRun).where(PayrollRun.org_id == current_user.org_id).order_by(PayrollRun.id.desc())).all()
+    result = []
+    for run in runs:
+        slips = db.scalars(select(Payslip).where(Payslip.payroll_run_id == run.id)).all()
+        result.append(
+            PayrollRunResponse(
+                id=run.id, period=run.period, status=run.status, payslip_count=len(slips), total_net_cents=sum(s.net_cents for s in slips), created_at=run.created_at
+            )
+        )
+    return result
+
+
+@app.post("/api/hr/payroll", response_model=PayrollRunDetailResponse, status_code=status.HTTP_201_CREATED)
+def create_payroll_run(payload: PayrollRunCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> PayrollRunDetailResponse:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    employees = db.scalars(select(Employee).where(Employee.org_id == current_user.org_id, Employee.status == "active")).all()
+    if not employees:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active employees to run payroll for")
+    run = PayrollRun(org_id=current_user.org_id, period=payload.period.strip(), status="finalized")
+    db.add(run)
+    db.flush()
+    slips = []
+    for employee in employees:
+        slip = Payslip(
+            org_id=current_user.org_id,
+            payroll_run_id=run.id,
+            employee_id=employee.id,
+            employee_name=employee.name,
+            gross_cents=employee.salary_cents,
+            net_cents=employee.salary_cents,
+        )
+        db.add(slip)
+        slips.append(slip)
+    db.commit()
+    return PayrollRunDetailResponse(
+        id=run.id,
+        period=run.period,
+        status=run.status,
+        payslips=[PayslipResponse(id=s.id, employee_name=s.employee_name, gross_cents=s.gross_cents, net_cents=s.net_cents) for s in slips],
+    )
+
+
+@app.get("/api/hr/payroll/{run_id}", response_model=PayrollRunDetailResponse)
+def get_payroll_run(run_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> PayrollRunDetailResponse:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    run = db.get(PayrollRun, run_id)
+    if not run or run.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll run not found")
+    slips = db.scalars(select(Payslip).where(Payslip.payroll_run_id == run.id).order_by(Payslip.id)).all()
+    return PayrollRunDetailResponse(
+        id=run.id,
+        period=run.period,
+        status=run.status,
+        payslips=[PayslipResponse(id=s.id, employee_name=s.employee_name, gross_cents=s.gross_cents, net_cents=s.net_cents) for s in slips],
+    )
 
 
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:

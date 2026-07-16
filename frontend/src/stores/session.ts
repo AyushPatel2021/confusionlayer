@@ -262,6 +262,43 @@ export interface AdmissionApplication {
   updated_at: string;
 }
 
+export interface Invoice {
+  id: number;
+  recipient_name: string;
+  description: string | null;
+  amount_cents: number;
+  paid_cents: number;
+  status: string;
+  voided: boolean;
+  due_date: string | null;
+  created_at: string;
+}
+
+export interface FeesSummary {
+  billed_cents: number;
+  collected_cents: number;
+  outstanding_cents: number;
+  invoice_count: number;
+}
+
+export interface Employee {
+  id: number;
+  name: string;
+  email: string | null;
+  designation: string | null;
+  salary_cents: number;
+  status: string;
+}
+
+export interface PayrollRun {
+  id: number;
+  period: string;
+  status: string;
+  payslip_count: number;
+  total_net_cents: number;
+  created_at: string;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -294,6 +331,10 @@ export const useSessionStore = defineStore("session", {
     pendingInvites: [] as PendingInvite[],
     plans: [] as OrgPlan[],
     applications: [] as AdmissionApplication[],
+    invoices: [] as Invoice[],
+    feesSummary: null as FeesSummary | null,
+    employees: [] as Employee[],
+    payrollRuns: [] as PayrollRun[],
     loading: "",
     error: "",
   }),
@@ -922,6 +963,106 @@ export const useSessionStore = defineStore("session", {
         await this.loadApplications();
       } catch (error) {
         this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadFees() {
+      this.loading = "fees";
+      this.error = "";
+      try {
+        this.invoices = await api<Invoice[]>("/api/fees/invoices", { token: this.token });
+        this.feesSummary = await api<FeesSummary>("/api/fees/summary", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string }): Promise<boolean> {
+      this.loading = "create-invoice";
+      this.error = "";
+      try {
+        await api("/api/fees/invoices", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await this.loadFees();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async recordPayment(invoiceId: number, amountCents: number, method?: string) {
+      this.loading = `invoice-${invoiceId}`;
+      this.error = "";
+      try {
+        await api(`/api/fees/invoices/${invoiceId}/payments`, { method: "POST", token: this.token, body: JSON.stringify({ amount_cents: amountCents, method }) });
+        await this.loadFees();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async voidInvoice(invoiceId: number) {
+      this.loading = `invoice-${invoiceId}`;
+      this.error = "";
+      try {
+        await api(`/api/fees/invoices/${invoiceId}/void`, { method: "POST", token: this.token });
+        await this.loadFees();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadEmployees() {
+      this.loading = "employees";
+      this.error = "";
+      try {
+        this.employees = await api<Employee[]>("/api/hr/employees", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createEmployee(payload: { name: string; email?: string; designation?: string; salary_cents: number }): Promise<boolean> {
+      this.loading = "create-employee";
+      this.error = "";
+      try {
+        await api("/api/hr/employees", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await this.loadEmployees();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadPayrollRuns() {
+      this.loading = "payroll";
+      this.error = "";
+      try {
+        this.payrollRuns = await api<PayrollRun[]>("/api/hr/payroll", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async runPayroll(period: string): Promise<boolean> {
+      this.loading = "run-payroll";
+      this.error = "";
+      try {
+        await api("/api/hr/payroll", { method: "POST", token: this.token, body: JSON.stringify({ period }) });
+        await this.loadPayrollRuns();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
       } finally {
         this.loading = "";
       }

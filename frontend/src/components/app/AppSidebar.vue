@@ -21,7 +21,11 @@ const links = computed(() => {
     { to: "/app/teacher/confusion", label: "Confusion brief" },
   ];
   if (session.isOrgAdmin && session.user?.segment === "school") {
-    items.push({ to: "/app/admissions", label: "Admissions" });
+    items.push(
+      { to: "/app/admissions", label: "Admissions" },
+      { to: "/app/fees", label: "Fees" },
+      { to: "/app/hr", label: "HR & payroll" },
+    );
   }
   if (session.isOrgAdmin) {
     items.push({ to: "/app/settings/members", label: "Members" }, { to: "/app/settings/billing", label: "Plan & billing" });

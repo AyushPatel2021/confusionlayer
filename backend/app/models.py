@@ -415,3 +415,89 @@ class ConfusionBrief(Base):
     affected_student_count: Mapped[int] = mapped_column(Integer, nullable=False)
     misconception_breakdown: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# --- M8: Fees & accounting (amounts stored in integer minor units / paise) ---
+
+
+class FeeStructure(Base):
+    __tablename__ = "fee_structures"
+    __table_args__ = (CheckConstraint("amount_cents >= 0", name="ck_fee_structure_amount"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+    __table_args__ = (CheckConstraint("amount_cents >= 0", name="ck_invoice_amount"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id", ondelete="SET NULL"), nullable=True)
+    recipient_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    voided: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+    __table_args__ = (CheckConstraint("amount_cents > 0", name="ck_payment_amount"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    method: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# --- M9: HR & payroll ---
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+    __table_args__ = (
+        CheckConstraint("salary_cents >= 0", name="ck_employee_salary"),
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_employee_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    salary_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PayrollRun(Base):
+    __tablename__ = "payroll_runs"
+    __table_args__ = (CheckConstraint("status IN ('draft', 'finalized')", name="ck_payroll_status"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    period: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Payslip(Base):
+    __tablename__ = "payslips"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    payroll_run_id: Mapped[int] = mapped_column(ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=False)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    employee_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    gross_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    net_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
