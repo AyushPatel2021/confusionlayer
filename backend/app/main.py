@@ -60,6 +60,7 @@ from app.models import (
     ConfusionBrief,
     Employee,
     FeeStructure,
+    GuardianLink,
     Invitation,
     Invoice,
     MasteryHistory,
@@ -541,6 +542,39 @@ class PayrollRunDetailResponse(BaseModel):
     period: str
     status: str
     payslips: list[PayslipResponse]
+
+
+# --- M10: parent portal ---
+class GuardianLinkRequest(BaseModel):
+    parent_email: str = Field(min_length=3, max_length=255)
+    student_id: int
+
+
+class ChildSummaryResponse(BaseModel):
+    student_id: int
+    name: str
+    admission_status: str | None
+    outstanding_cents: int
+    average_mastery: float | None
+
+
+# --- M11: platform admin ---
+class AdminOrgResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    segment: str
+    plan_code: str | None
+    member_count: int
+
+
+class AdminUsageResponse(BaseModel):
+    orgs: int
+    users: int
+    students: int
+    invoices: int
+    employees: int
+    applications: int
 
 
 @app.get("/api/health")
@@ -1739,6 +1773,99 @@ def get_payroll_run(run_id: int, current_user: User = Depends(get_current_user),
         period=run.period,
         status=run.status,
         payslips=[PayslipResponse(id=s.id, employee_name=s.employee_name, gross_cents=s.gross_cents, net_cents=s.net_cents) for s in slips],
+    )
+
+
+# ---- M10: Parent portal ----
+
+
+def _child_summary(db: Session, student: Student) -> ChildSummaryResponse:
+    admission = db.scalar(
+        select(AdmissionApplication).where(AdmissionApplication.student_id == student.id).order_by(AdmissionApplication.id.desc())
+    )
+    invoices = db.scalars(select(Invoice).where(Invoice.student_id == student.id, Invoice.voided.is_(False))).all()
+    outstanding = 0
+    for invoice in invoices:
+        paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
+        outstanding += max(0, invoice.amount_cents - int(paid))
+    mastery_rows = db.scalars(select(MasteryRecord.computed_mastery).where(MasteryRecord.student_id == student.id)).all()
+    average = round(sum(mastery_rows) / len(mastery_rows), 4) if mastery_rows else None
+    return ChildSummaryResponse(
+        student_id=student.id,
+        name=student.name,
+        admission_status=admission.status if admission else None,
+        outstanding_cents=outstanding,
+        average_mastery=average,
+    )
+
+
+@app.post("/api/family/links", status_code=status.HTTP_201_CREATED)
+def link_guardian(payload: GuardianLinkRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    _require_org_admin(current_user)
+    _require_module(db, current_user, "parent")
+    parent = db.scalar(
+        select(User).where(User.org_id == current_user.org_id, User.email == payload.parent_email.strip().lower(), User.role == "parent")
+    )
+    if not parent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No parent member with that email in your organization")
+    student = db.get(Student, payload.student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    existing = db.scalar(select(GuardianLink).where(GuardianLink.parent_user_id == parent.id, GuardianLink.student_id == student.id))
+    if not existing:
+        db.add(GuardianLink(org_id=current_user.org_id, parent_user_id=parent.id, student_id=student.id))
+        db.commit()
+    return {"parent_user_id": parent.id, "student_id": student.id}
+
+
+@app.get("/api/family/children", response_model=list[ChildSummaryResponse])
+def list_children(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ChildSummaryResponse]:
+    if current_user.role != "parent":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a parent can view their children")
+    _require_module(db, current_user, "parent")
+    links = db.scalars(select(GuardianLink).where(GuardianLink.parent_user_id == current_user.id)).all()
+    summaries: list[ChildSummaryResponse] = []
+    for link in links:
+        student = db.get(Student, link.student_id)
+        if student:
+            summaries.append(_child_summary(db, student))
+    return summaries
+
+
+# ---- M11: Platform admin ----
+
+
+def _require_platform_admin(user: User) -> None:
+    if user.role != "platform_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
+
+
+@app.get("/api/admin/orgs", response_model=list[AdminOrgResponse])
+def admin_list_orgs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AdminOrgResponse]:
+    _require_platform_admin(current_user)
+    orgs = db.scalars(select(Organization).order_by(Organization.id)).all()
+    result = []
+    for org in orgs:
+        subscription = _org_subscription(db, org.id)
+        plan = db.get(Plan, subscription.plan_id) if subscription else None
+        member_count = db.scalar(select(func.count(User.id)).where(User.org_id == org.id)) or 0
+        result.append(
+            AdminOrgResponse(id=org.id, name=org.name, slug=org.slug, segment=org.segment, plan_code=plan.code if plan else None, member_count=int(member_count))
+        )
+    return result
+
+
+@app.get("/api/admin/usage", response_model=AdminUsageResponse)
+def admin_usage(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AdminUsageResponse:
+    _require_platform_admin(current_user)
+    count = lambda model: int(db.scalar(select(func.count(model.id))) or 0)  # noqa: E731
+    return AdminUsageResponse(
+        orgs=count(Organization),
+        users=count(User),
+        students=count(Student),
+        invoices=count(Invoice),
+        employees=count(Employee),
+        applications=count(AdmissionApplication),
     )
 
 

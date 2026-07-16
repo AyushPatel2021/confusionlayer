@@ -31,6 +31,8 @@ const routes: RouteRecordRaw[] = [
       { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue") },
       { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue") },
       { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue") },
+      // Parent
+      { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue") },
       // Teacher
       { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue") },
       { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue") },

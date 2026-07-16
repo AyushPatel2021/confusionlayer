@@ -11,11 +11,25 @@ const session = useSessionStore();
 const email = ref("");
 const role = ref("teacher");
 const roles = ["teacher", "student", "school_admin", "accountant", "hr", "parent"];
+const guardianEmail = ref("");
+const guardianStudentId = ref("");
+const guardianDone = ref(false);
 
 onMounted(() => session.loadMembers());
 
 async function invite() {
   if (await session.inviteMember(email.value, role.value)) email.value = "";
+}
+
+async function link() {
+  const id = Number(guardianStudentId.value);
+  if (!guardianEmail.value.trim() || !id) return;
+  guardianDone.value = false;
+  if (await session.linkGuardian(guardianEmail.value.trim(), id)) {
+    guardianEmail.value = "";
+    guardianStudentId.value = "";
+    guardianDone.value = true;
+  }
 }
 </script>
 
@@ -35,6 +49,17 @@ async function invite() {
       </SButton>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
+
+    <div v-if="session.user?.segment === 'school'" class="rounded-lg border border-hairline bg-surface p-5">
+      <p class="s-eyebrow">Link a parent to a student</p>
+      <p class="mt-1 text-xs text-ink-500">Connect an invited parent account to a student so they can follow along.</p>
+      <form class="mt-3 flex flex-wrap items-end gap-3" @submit.prevent="link">
+        <label class="flex-1 text-sm">Parent email<input v-model="guardianEmail" type="email" class="s-input mt-1" /></label>
+        <label class="text-sm">Student ID<input v-model="guardianStudentId" type="number" class="s-input mt-1" /></label>
+        <SButton type="submit" variant="secondary" :disabled="session.loading === 'link-guardian'">Link</SButton>
+      </form>
+      <p v-if="guardianDone" class="mt-2 text-sm text-success">Linked.</p>
+    </div>
 
     <SLoadingState v-if="session.loading === 'members' && !session.members.length" :rows="3" />
     <div v-else class="space-y-6">

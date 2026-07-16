@@ -14,6 +14,9 @@ const links = computed(() => {
       { to: "/app/progress", label: "My progress" },
     ];
   }
+  if (session.isParent) {
+    return [{ to: "/app/family", label: "My family" }];
+  }
   const items = [
     { to: "/app/teacher", label: "Classroom" },
     { to: "/app/curriculum", label: "Curriculum" },

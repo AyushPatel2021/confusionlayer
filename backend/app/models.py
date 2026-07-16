@@ -459,6 +459,20 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+# --- M10: Parent portal ---
+
+
+class GuardianLink(Base):
+    __tablename__ = "guardian_links"
+    __table_args__ = (UniqueConstraint("parent_user_id", "student_id", name="uq_guardian_link"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    parent_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 # --- M9: HR & payroll ---
 
 

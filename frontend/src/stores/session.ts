@@ -299,6 +299,32 @@ export interface PayrollRun {
   created_at: string;
 }
 
+export interface Child {
+  student_id: number;
+  name: string;
+  admission_status: string | null;
+  outstanding_cents: number;
+  average_mastery: number | null;
+}
+
+export interface AdminOrg {
+  id: number;
+  name: string;
+  slug: string;
+  segment: string;
+  plan_code: string | null;
+  member_count: number;
+}
+
+export interface AdminUsage {
+  orgs: number;
+  users: number;
+  students: number;
+  invoices: number;
+  employees: number;
+  applications: number;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -335,6 +361,9 @@ export const useSessionStore = defineStore("session", {
     feesSummary: null as FeesSummary | null,
     employees: [] as Employee[],
     payrollRuns: [] as PayrollRun[],
+    children: [] as Child[],
+    adminOrgs: [] as AdminOrg[],
+    adminUsage: null as AdminUsage | null,
     loading: "",
     error: "",
   }),
@@ -346,7 +375,16 @@ export const useSessionStore = defineStore("session", {
     isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "platform_admin",
     isOrgAdmin: (state) => ["owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
     isOwner: (state) => state.user?.role === "owner" || state.user?.role === "admin",
-    roleHome: (state) => (state.user?.role === "student" ? "/app/learn" : "/app/teacher"),
+    isParent: (state) => state.user?.role === "parent",
+    isPlatformAdmin: (state) => state.user?.role === "platform_admin",
+    roleHome: (state) =>
+      state.user?.role === "student"
+        ? "/app/learn"
+        : state.user?.role === "parent"
+          ? "/app/family"
+          : state.user?.role === "platform_admin"
+            ? "/admin"
+            : "/app/teacher",
   },
   actions: {
     async demoLogin(role: "teacher" | "student") {
@@ -1063,6 +1101,42 @@ export const useSessionStore = defineStore("session", {
       } catch (error) {
         this.error = messageFromError(error);
         return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadChildren() {
+      this.loading = "children";
+      this.error = "";
+      try {
+        this.children = await api<Child[]>("/api/family/children", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async linkGuardian(parentEmail: string, studentId: number): Promise<boolean> {
+      this.loading = "link-guardian";
+      this.error = "";
+      try {
+        await api("/api/family/links", { method: "POST", token: this.token, body: JSON.stringify({ parent_email: parentEmail, student_id: studentId }) });
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadAdmin() {
+      this.loading = "admin";
+      this.error = "";
+      try {
+        this.adminOrgs = await api<AdminOrg[]>("/api/admin/orgs", { token: this.token });
+        this.adminUsage = await api<AdminUsage>("/api/admin/usage", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
       } finally {
         this.loading = "";
       }
