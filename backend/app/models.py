@@ -193,6 +193,7 @@ class Subject(Base):
     __table_args__ = (UniqueConstraint("name", "board", "class_level", name="uq_subject_identity"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     board: Mapped[str] = mapped_column(String(80), nullable=False)
     class_level: Mapped[str] = mapped_column(String(80), nullable=False)

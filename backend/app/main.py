@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from sqlalchemy import or_, select
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.ai import (
@@ -46,6 +46,7 @@ from app.auth import (
     user_response,
 )
 from app.briefs import aggregate_confusion, aggregate_forecast
+from app.curriculum import DraftChapter, commit_subject_tree, extract_structure
 from app.db import get_db
 from app.forecast import recompute_classroom_forecasts
 from app.models import (
@@ -295,6 +296,68 @@ class StudentProgressResponse(BaseModel):
     mastered_threshold: float
     summary: ProgressSummaryResponse
     concepts: list[ProgressConceptResponse]
+
+
+class SubjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    board: str = Field(default="CBSE", max_length=80)
+    class_level: str = Field(default="10", max_length=80)
+
+
+class ChapterCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+
+
+class ConceptCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+
+
+class DraftChapterModel(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    topics: list[str] = Field(default_factory=list)
+
+
+class ImportCommitRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    board: str = Field(default="CBSE", max_length=80)
+    class_level: str = Field(default="10", max_length=80)
+    chapters: list[DraftChapterModel] = Field(default_factory=list)
+
+
+class CurriculumSubjectResponse(BaseModel):
+    id: int
+    name: str
+    board: str
+    class_level: str
+    org_id: int | None
+    shared: bool
+    chapter_count: int
+
+
+class CurriculumConceptNode(BaseModel):
+    id: int
+    title: str
+    order: int
+
+
+class CurriculumChapterNode(BaseModel):
+    id: int
+    title: str
+    order: int
+    concepts: list[CurriculumConceptNode]
+
+
+class CurriculumTreeResponse(BaseModel):
+    id: int
+    name: str
+    board: str
+    class_level: str
+    org_id: int | None
+    chapters: list[CurriculumChapterNode]
+
+
+class ImportDraftResponse(BaseModel):
+    chapters: list[DraftChapterModel]
 
 
 @app.get("/api/health")
@@ -898,6 +961,139 @@ def _cross_org(user: User, classroom: Classroom) -> bool:
     if user.role == "platform_admin":
         return False
     return user.org_id is not None and classroom.org_id is not None and classroom.org_id != user.org_id
+
+
+CURRICULUM_EDITOR_ROLES = {"owner", "school_admin", "teacher", "admin"}
+MAX_IMPORT_BYTES = 15 * 1024 * 1024
+
+
+def _require_curriculum_editor(user: User) -> None:
+    if user.role not in CURRICULUM_EDITOR_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to manage curriculum")
+
+
+def _editable_subject(db: Session, user: User, subject_id: int) -> Subject:
+    _require_curriculum_editor(user)
+    subject = db.get(Subject, subject_id)
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
+    if subject.org_id != user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This curriculum is read-only for your organization")
+    return subject
+
+
+def _subject_tree_response(subject: Subject) -> CurriculumTreeResponse:
+    return CurriculumTreeResponse(
+        id=subject.id,
+        name=subject.name,
+        board=subject.board,
+        class_level=subject.class_level,
+        org_id=subject.org_id,
+        chapters=[
+            CurriculumChapterNode(
+                id=chapter.id,
+                title=chapter.title,
+                order=chapter.order,
+                concepts=[
+                    CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
+                    for concept in sorted(chapter.concepts, key=lambda c: c.order)
+                ],
+            )
+            for chapter in sorted(subject.chapters, key=lambda c: c.order)
+        ],
+    )
+
+
+@app.get("/api/curriculum/subjects", response_model=list[CurriculumSubjectResponse])
+def list_curriculum_subjects(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[CurriculumSubjectResponse]:
+    _require_curriculum_editor(current_user)
+    subjects = db.scalars(
+        select(Subject).where(or_(Subject.org_id == current_user.org_id, Subject.org_id.is_(None))).order_by(Subject.id)
+    ).all()
+    return [
+        CurriculumSubjectResponse(
+            id=subject.id,
+            name=subject.name,
+            board=subject.board,
+            class_level=subject.class_level,
+            org_id=subject.org_id,
+            shared=subject.org_id is None,
+            chapter_count=len(subject.chapters),
+        )
+        for subject in subjects
+    ]
+
+
+@app.post("/api/curriculum/subjects", response_model=CurriculumSubjectResponse, status_code=status.HTTP_201_CREATED)
+def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumSubjectResponse:
+    _require_curriculum_editor(current_user)
+    subject = Subject(org_id=current_user.org_id, name=payload.name.strip(), board=payload.board.strip(), class_level=payload.class_level.strip())
+    db.add(subject)
+    db.commit()
+    db.refresh(subject)
+    return CurriculumSubjectResponse(
+        id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level, org_id=subject.org_id, shared=False, chapter_count=0
+    )
+
+
+@app.get("/api/curriculum/subjects/{subject_id}", response_model=CurriculumTreeResponse)
+def get_curriculum_subject(subject_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
+    _require_curriculum_editor(current_user)
+    subject = db.get(Subject, subject_id)
+    if not subject or subject.org_id not in (None, current_user.org_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
+    return _subject_tree_response(subject)
+
+
+@app.post("/api/curriculum/subjects/{subject_id}/chapters", response_model=CurriculumChapterNode, status_code=status.HTTP_201_CREATED)
+def add_curriculum_chapter(subject_id: int, payload: ChapterCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumChapterNode:
+    subject = _editable_subject(db, current_user, subject_id)
+    next_order = 1 + max((chapter.order for chapter in subject.chapters), default=0)
+    chapter = Chapter(subject_id=subject.id, title=payload.title.strip(), order=next_order)
+    db.add(chapter)
+    db.commit()
+    db.refresh(chapter)
+    return CurriculumChapterNode(id=chapter.id, title=chapter.title, order=chapter.order, concepts=[])
+
+
+@app.post("/api/curriculum/chapters/{chapter_id}/concepts", response_model=CurriculumConceptNode, status_code=status.HTTP_201_CREATED)
+def add_curriculum_concept(chapter_id: int, payload: ConceptCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumConceptNode:
+    chapter = db.get(Chapter, chapter_id)
+    if not chapter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+    _editable_subject(db, current_user, chapter.subject_id)
+    next_order = 1 + max((concept.order for concept in chapter.concepts), default=0)
+    concept = Concept(chapter_id=chapter.id, title=payload.title.strip(), order=next_order)
+    db.add(concept)
+    db.commit()
+    db.refresh(concept)
+    return CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
+
+
+@app.post("/api/curriculum/import", response_model=ImportDraftResponse)
+def import_curriculum_pdf(file: UploadFile = File(...), current_user: User = Depends(get_current_user)) -> ImportDraftResponse:
+    _require_curriculum_editor(current_user)
+    contents = file.file.read()
+    if not contents:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
+    if len(contents) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 15MB)")
+    try:
+        drafts = extract_structure(contents)
+    except Exception as exc:  # noqa: BLE001 - surface a clean error, never persist the raw file
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Could not read structure from that document") from exc
+    # `contents` is only referenced here; it is never written to disk or the DB.
+    return ImportDraftResponse(chapters=[DraftChapterModel(title=d.title, topics=d.topics) for d in drafts])
+
+
+@app.post("/api/curriculum/import/commit", response_model=CurriculumTreeResponse, status_code=status.HTTP_201_CREATED)
+def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
+    _require_curriculum_editor(current_user)
+    if not payload.chapters:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one chapter is required")
+    drafts = [DraftChapter(title=chapter.title, topics=list(chapter.topics)) for chapter in payload.chapters]
+    subject = commit_subject_tree(db, current_user.org_id, payload.name, payload.board, payload.class_level, drafts)
+    return _subject_tree_response(subject)
 
 
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:

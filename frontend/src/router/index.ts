@@ -33,6 +33,8 @@ const routes: RouteRecordRaw[] = [
       { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue") },
       // Teacher
       { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue") },
+      { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue") },
+      { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue") },
       { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue") },
       { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue") },
     ],

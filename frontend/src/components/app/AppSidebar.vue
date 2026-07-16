@@ -16,6 +16,7 @@ const links = computed(() => {
   }
   return [
     { to: "/app/teacher", label: "Classroom" },
+    { to: "/app/curriculum", label: "Curriculum" },
     { to: "/app/teacher/forecast", label: "Forecast brief" },
     { to: "/app/teacher/confusion", label: "Confusion brief" },
   ];

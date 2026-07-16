@@ -181,6 +181,43 @@ export interface StudentProgress {
   concepts: ProgressConcept[];
 }
 
+export interface CurriculumSubject {
+  id: number;
+  name: string;
+  board: string;
+  class_level: string;
+  org_id: number | null;
+  shared: boolean;
+  chapter_count: number;
+}
+
+export interface CurriculumConceptNode {
+  id: number;
+  title: string;
+  order: number;
+}
+
+export interface CurriculumChapterNode {
+  id: number;
+  title: string;
+  order: number;
+  concepts: CurriculumConceptNode[];
+}
+
+export interface CurriculumTree {
+  id: number;
+  name: string;
+  board: string;
+  class_level: string;
+  org_id: number | null;
+  chapters: CurriculumChapterNode[];
+}
+
+export interface DraftChapter {
+  title: string;
+  topics: string[];
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -205,6 +242,9 @@ export const useSessionStore = defineStore("session", {
     confusionNarratives: {} as Record<number, BriefNarrative>,
     selfStartTutorial: null as Tutorial | null,
     progress: null as StudentProgress | null,
+    curriculumSubjects: [] as CurriculumSubject[],
+    curriculumTree: null as CurriculumTree | null,
+    importDraft: null as DraftChapter[] | null,
     loading: "",
     error: "",
   }),
@@ -607,6 +647,108 @@ export const useSessionStore = defineStore("session", {
         this.progress = await api<StudentProgress>("/api/student/progress", { token: this.token });
       } catch (error) {
         this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadCurriculumSubjects() {
+      this.loading = "curriculum";
+      this.error = "";
+      try {
+        this.curriculumSubjects = await api<CurriculumSubject[]>("/api/curriculum/subjects", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadSubjectTree(subjectId: number) {
+      this.loading = "curriculum-tree";
+      this.error = "";
+      try {
+        this.curriculumTree = await api<CurriculumTree>(`/api/curriculum/subjects/${subjectId}`, { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createSubject(payload: { name: string; board?: string; class_level?: string }): Promise<CurriculumSubject | null> {
+      this.loading = "create-subject";
+      this.error = "";
+      try {
+        const subject = await api<CurriculumSubject>("/api/curriculum/subjects", {
+          method: "POST",
+          token: this.token,
+          body: JSON.stringify(payload),
+        });
+        await this.loadCurriculumSubjects();
+        return subject;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return null;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createChapter(subjectId: number, title: string) {
+      this.loading = "create-chapter";
+      this.error = "";
+      try {
+        await api(`/api/curriculum/subjects/${subjectId}/chapters`, { method: "POST", token: this.token, body: JSON.stringify({ title }) });
+        await this.loadSubjectTree(subjectId);
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createConcept(subjectId: number, chapterId: number, title: string) {
+      this.loading = `create-concept-${chapterId}`;
+      this.error = "";
+      try {
+        await api(`/api/curriculum/chapters/${chapterId}/concepts`, { method: "POST", token: this.token, body: JSON.stringify({ title }) });
+        await this.loadSubjectTree(subjectId);
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async importPdf(file: File): Promise<boolean> {
+      this.loading = "import";
+      this.error = "";
+      this.importDraft = null;
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const headers = new Headers();
+        if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
+        const response = await fetch("/api/curriculum/import", { method: "POST", headers, body: form });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `Import failed with ${response.status}`);
+        }
+        const data = (await response.json()) as { chapters: DraftChapter[] };
+        this.importDraft = data.chapters;
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async commitImport(payload: { name: string; board?: string; class_level?: string; chapters: DraftChapter[] }): Promise<CurriculumTree | null> {
+      this.loading = "commit-import";
+      this.error = "";
+      try {
+        const tree = await api<CurriculumTree>("/api/curriculum/import/commit", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        this.importDraft = null;
+        return tree;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return null;
       } finally {
         this.loading = "";
       }
