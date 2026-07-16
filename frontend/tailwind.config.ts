@@ -9,7 +9,7 @@ export default {
         paper: "#FAF8F3",
         surface: { DEFAULT: "#FFFFFF", sunken: "#F1EDE4" },
         hairline: "#E4DED2",
-        ink: { 900: "#1F2A2E", 700: "#3C4A4F", 500: "#6B7880", 300: "#A6AFB4" },
+        ink: { 900: "#1F2A2E", 800: "#2B383D", 700: "#3C4A4F", 600: "#53616A", 500: "#6B7880", 300: "#A6AFB4" },
         primary: { 50: "#EBF4F3", 100: "#D6EAE9", 500: "#178A8A", 600: "#0F6E6E" },
         accent: { 100: "#F6E3D8", 600: "#C1592E" },
         success: { DEFAULT: "#2E7D5B", bg: "#E2EFE8" },

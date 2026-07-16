@@ -24,7 +24,18 @@ const routes: RouteRecordRaw[] = [
     path: "/app",
     component: () => import("../layouts/AppLayout.vue"),
     meta: { requiresAuth: true },
-    children: [{ path: "", name: "app-console", component: () => import("../views/app/ConsoleView.vue") }],
+    children: [
+      { path: "", redirect: () => useSessionStore().roleHome },
+      // Student
+      { path: "learn", name: "learn", component: () => import("../views/app/student/LearnView.vue") },
+      { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue") },
+      { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue") },
+      { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue") },
+      // Teacher
+      { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue") },
+      { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue") },
+      { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue") },
+    ],
   },
   {
     path: "/admin",

@@ -2,6 +2,8 @@
 import Chart from "chart.js/auto";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import SEmptyState from "./ui/SEmptyState.vue";
+import SLoadingState from "./ui/SLoadingState.vue";
 import { useSessionStore } from "../stores/session";
 
 const session = useSessionStore();
@@ -14,12 +16,9 @@ onMounted(() => {
   if (!session.progress) void session.loadProgress();
   renderChart();
 });
-
 onBeforeUnmount(() => chart?.destroy());
-
 watch(progress, () => renderChart());
 
-// Average mastery across all concepts at each recorded date -> a single trend line.
 function averagedSeries(): { labels: string[]; values: number[] } {
   const p = session.progress;
   if (!p) return { labels: [], values: [] };
@@ -33,10 +32,7 @@ function averagedSeries(): { labels: string[]; values: number[] } {
     }
   }
   const labels = [...byDate.keys()].sort();
-  return {
-    labels,
-    values: labels.map((date) => Math.round((byDate.get(date)!.sum / byDate.get(date)!.count) * 100)),
-  };
+  return { labels, values: labels.map((d) => Math.round((byDate.get(d)!.sum / byDate.get(d)!.count) * 100)) };
 }
 
 function renderChart() {
@@ -49,15 +45,7 @@ function renderChart() {
     data: {
       labels,
       datasets: [
-        {
-          label: "Average mastery (%)",
-          data: values,
-          borderColor: "#0f766e",
-          backgroundColor: "rgba(15, 118, 110, 0.12)",
-          fill: true,
-          tension: 0.3,
-          pointRadius: 3,
-        },
+        { label: "Average mastery (%)", data: values, borderColor: "#0F6E6E", backgroundColor: "rgba(15,110,110,0.12)", fill: true, tension: 0.3, pointRadius: 3 },
       ],
     },
     options: {
@@ -69,71 +57,54 @@ function renderChart() {
   });
 }
 
-function pct(value: number) {
-  return Math.round(value * 100);
+function pct(v: number) {
+  return Math.round(v * 100);
 }
 </script>
 
 <template>
-  <div class="panel">
-    <div>
-      <p class="eyebrow">Student · mastery over time</p>
-      <h2 class="panel-title">My Progress</h2>
-    </div>
-
-    <!-- Loading -->
-    <div v-if="session.loading === 'progress' && !progress" class="mt-5 space-y-3">
-      <div class="skeleton-card" style="height: 16rem" />
-    </div>
-
-    <!-- Empty -->
-    <div v-else-if="progress && progress.concepts.length === 0" class="mt-5 empty-tool">
-      No mastery data yet. Once you've worked through some concepts, your mastery trend will show here.
-    </div>
-
-    <!-- Data -->
-    <div v-else-if="progress" class="mt-5 space-y-5">
+  <div>
+    <SLoadingState v-if="session.loading === 'progress' && !progress" :rows="2" />
+    <SEmptyState
+      v-else-if="progress && progress.concepts.length === 0"
+      title="No mastery data yet"
+      message="Once you've worked through some concepts, your mastery trend will show here."
+    />
+    <div v-else-if="progress" class="space-y-6">
       <dl class="grid grid-cols-3 gap-3">
-        <div class="metric">
-          <dt>Concepts</dt>
-          <dd>{{ progress.summary.concept_count }}</dd>
+        <div class="rounded-md border border-hairline bg-surface p-4">
+          <dt class="text-xs font-medium text-ink-500">Concepts</dt>
+          <dd class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ progress.summary.concept_count }}</dd>
         </div>
-        <div class="metric">
-          <dt>Mastered (≥{{ pct(progress.mastered_threshold) }}%)</dt>
-          <dd>{{ progress.summary.mastered_count }}</dd>
+        <div class="rounded-md border border-hairline bg-surface p-4">
+          <dt class="text-xs font-medium text-ink-500">Mastered (≥{{ pct(progress.mastered_threshold) }}%)</dt>
+          <dd class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ progress.summary.mastered_count }}</dd>
         </div>
-        <div class="metric">
-          <dt>Avg mastery now</dt>
-          <dd>{{ pct(progress.summary.average_effective_mastery) }}%</dd>
+        <div class="rounded-md border border-hairline bg-surface p-4">
+          <dt class="text-xs font-medium text-ink-500">Avg mastery now</dt>
+          <dd class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ pct(progress.summary.average_effective_mastery) }}%</dd>
         </div>
       </dl>
 
-      <div class="tutorial-band">
-        <p class="eyebrow">Average mastery over time</p>
-        <div class="mt-3" style="position: relative; height: 16rem">
-          <canvas ref="canvas" />
-        </div>
+      <div class="rounded-lg border border-hairline bg-surface p-5">
+        <p class="s-eyebrow">Average mastery over time</p>
+        <div class="mt-3" style="position: relative; height: 16rem"><canvas ref="canvas" /></div>
       </div>
 
       <div>
-        <p class="eyebrow">Current mastery by concept</p>
+        <p class="s-eyebrow">Current mastery by concept</p>
         <ul class="mt-3 space-y-2">
-          <li v-for="concept in progress.concepts" :key="concept.concept_id" class="border border-slate-200 bg-white p-3">
+          <li v-for="c in progress.concepts" :key="c.concept_id" class="rounded-md border border-hairline bg-surface p-3">
             <div class="flex items-center justify-between gap-3">
-              <span class="text-sm font-medium text-slate-800">{{ concept.concept_title }}</span>
-              <span class="text-xs text-slate-500">
-                {{ pct(concept.effective_mastery) }}% now · {{ pct(concept.current_mastery) }}% peak
-              </span>
+              <span class="text-sm font-medium text-ink-800">{{ c.concept_title }}</span>
+              <span class="text-xs text-ink-500">{{ pct(c.effective_mastery) }}% now · {{ pct(c.current_mastery) }}% peak</span>
             </div>
-            <div class="mt-2 forecast-bar">
-              <div class="forecast-bar-fill" :style="{ width: `${pct(concept.effective_mastery)}%` }" />
+            <div class="mt-2 h-2 w-full overflow-hidden rounded-sm bg-surface-sunken">
+              <div class="h-full rounded-sm bg-primary-600" :style="{ width: `${pct(c.effective_mastery)}%` }" />
             </div>
           </li>
         </ul>
       </div>
     </div>
-
-    <!-- Pre-load -->
-    <div v-else class="mt-5 empty-tool">Loading progress…</div>
   </div>
 </template>

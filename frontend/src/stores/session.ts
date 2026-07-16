@@ -209,8 +209,12 @@ export const useSessionStore = defineStore("session", {
     error: "",
   }),
   getters: {
-    isTeacher: (state) => state.user?.role === "teacher" || state.user?.role === "admin",
+    // Staff-side roles that use the teacher learning views.
+    isTeacher: (state) =>
+      ["teacher", "owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
     isStudent: (state) => state.user?.role === "student",
+    isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "platform_admin",
+    roleHome: (state) => (state.user?.role === "student" ? "/app/learn" : "/app/teacher"),
   },
   actions: {
     async demoLogin(role: "teacher" | "student") {
@@ -400,15 +404,20 @@ export const useSessionStore = defineStore("session", {
     },
     async openConcept(concept: ConceptSummary) {
       if (concept.locked) return;
-      this.loading = `concept-${concept.id}`;
+      await this.loadConceptById(concept.id);
+    },
+    async loadConceptById(conceptId: number) {
+      this.loading = `concept-${conceptId}`;
       this.error = "";
       this.tutorial = null;
       this.chatMessages = [];
       this.quizGrade = null;
       this.teachBackGrade = null;
+      this.activeTool = "tutorial";
       try {
-        this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${concept.id}`, { token: this.token });
+        this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${conceptId}`, { token: this.token });
       } catch (error) {
+        this.selectedConcept = null;
         this.error = messageFromError(error);
       } finally {
         this.loading = "";
