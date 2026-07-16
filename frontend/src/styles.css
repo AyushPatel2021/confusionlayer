@@ -199,15 +199,158 @@ button:disabled {
   transform: scaleY(1);
 }
 
+/* Draw-in SVG annotation (underline / circle): animates stroke on reveal */
+.draw path,
+.draw circle,
+.draw line {
+  stroke-dasharray: var(--len, 400);
+  stroke-dashoffset: var(--len, 400);
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s;
+}
+.reveal-in .draw path,
+.reveal-in .draw circle,
+.reveal-in .draw line,
+.draw.reveal-in path {
+  stroke-dashoffset: 0;
+}
+
+/* Highlight mark that sweeps in behind text */
+.mark {
+  background-image: linear-gradient(transparent 60%, rgba(193, 89, 46, 0.22) 60%);
+  background-size: 0% 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+}
+.reveal-in .mark,
+.mark.reveal-in {
+  background-size: 100% 100%;
+}
+
+/* Dotted grid backdrop */
+.dot-grid {
+  background-image: radial-gradient(rgba(31, 42, 46, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Marquee ticker */
+.marquee {
+  overflow: hidden;
+}
+.marquee-track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 26s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Gentle float for hero motif */
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Pulsing accent dot */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 9999px;
+  background: #0f6e6e;
+  box-shadow: 0 0 0 0 rgba(15, 110, 110, 0.5);
+  animation: pulse 2.4s ease-out infinite;
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 110, 110, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(15, 110, 110, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(15, 110, 110, 0);
+  }
+}
+
+/* Word-by-word hero reveal */
+.word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.5em) rotate(1.5deg);
+  animation: word-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes word-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Chat bubble pop-in (staggered via inline delay) */
+.bubble {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+.reveal-in .bubble {
+  animation: bubble-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes bubble-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Scroll-driven timeline fill (height set via --fill by a scroll composable) */
+.timeline-fill {
+  height: var(--fill, 0%);
+  transition: height 0.1s linear;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .reveal-in,
   .motif-bar,
   .card-lift,
   .nudge,
-  .link-underline::after {
+  .link-underline::after,
+  .draw path,
+  .draw circle,
+  .draw line,
+  .mark,
+  .float,
+  .marquee-track,
+  .word,
+  .bubble {
     transition: none !important;
     transform: none !important;
     opacity: 1 !important;
+    animation: none !important;
+    background-size: 100% 100% !important;
+    stroke-dashoffset: 0 !important;
   }
 }

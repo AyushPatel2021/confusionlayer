@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
 
+import Marquee from "../../components/marketing/Marquee.vue";
+import Squiggle from "../../components/marketing/Squiggle.vue";
 import SButton from "../../components/ui/SButton.vue";
 
 const steps = [
@@ -16,78 +18,89 @@ const segments = [
   { to: "/students", name: "For individual learners", body: "Learn any topic at your level, with an AI that clears confusion instead of hiding it." },
 ];
 
-// A small, honest forecast motif for the hero (real concept, not a fake dashboard).
 const forecast = [
   { concept: "Ionic Bonding", pct: 78 },
   { concept: "Reactivity Series", pct: 54 },
   { concept: "Neutralisation", pct: 31 },
 ];
+
+const headline = ["Clear", "the", "confusion"];
 </script>
 
 <template>
   <div class="overflow-hidden">
     <!-- Hero -->
-    <section class="mx-auto grid max-w-content items-center gap-12 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:pt-24">
-      <div v-reveal>
-        <p class="s-eyebrow">Teacher-gated · predictive</p>
-        <h1 class="mt-4 font-display text-[2.7rem] font-semibold leading-[1.05] text-ink-900 md:text-6xl">
-          Clear the confusion<br />
-          <span class="relative inline-block">before
-            <svg class="absolute -bottom-2 left-0 w-full" height="10" viewBox="0 0 200 10" preserveAspectRatio="none" aria-hidden="true">
-              <path d="M2 7 C 50 2, 150 2, 198 6" fill="none" stroke="#C1592E" stroke-width="3" stroke-linecap="round" />
-            </svg>
-          </span>
-          it starts.
-        </h1>
-        <p class="mt-6 max-w-reading text-lg leading-8 text-ink-700">
-          Most tools react after a student fails a quiz. Slate forecasts which upcoming concepts a class will
-          struggle with — from decayed mastery of the prerequisites — and hands the teacher a briefing the night
-          before the lesson.
-        </p>
-        <div class="mt-8 flex flex-wrap items-center gap-3">
-          <RouterLink to="/signup" class="nudge-host">
-            <SButton variant="primary">Get started — it's free <span class="nudge">→</span></SButton>
-          </RouterLink>
-          <RouterLink to="/login"><SButton variant="ghost">Explore the sample school</SButton></RouterLink>
-        </div>
-      </div>
-
-      <!-- Forecast motif -->
-      <div v-reveal class="lg:justify-self-end">
-        <div class="card-lift w-full max-w-sm rounded-lg border border-hairline bg-surface p-6 shadow-raised">
-          <div class="flex items-center justify-between">
-            <p class="s-eyebrow">Forecast brief · Ch. 5</p>
-            <span class="rounded-sm bg-accent-100 px-2 py-0.5 text-xs font-semibold text-accent-600">tomorrow</span>
+    <section class="relative">
+      <div class="dot-grid pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" />
+      <div class="relative mx-auto grid max-w-content items-center gap-12 px-6 pb-16 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:pt-24">
+        <div>
+          <p class="s-eyebrow pulse-dot ml-4">Teacher-gated · predictive</p>
+          <h1 class="mt-5 font-display text-[2.7rem] font-semibold leading-[1.04] text-ink-900 md:text-6xl">
+            <span
+              v-for="(w, i) in headline"
+              :key="w"
+              class="word mr-[0.25em]"
+              :style="{ animationDelay: `${i * 0.09}s` }"
+              >{{ w }}</span
+            ><br />
+            <Squiggle>before</Squiggle>
+            <span class="word mr-[0.25em]" :style="{ animationDelay: '0.4s' }">&nbsp;it</span>
+            <span class="word" :style="{ animationDelay: '0.48s' }">starts.</span>
+          </h1>
+          <p class="mt-6 max-w-reading text-lg leading-8 text-ink-700">
+            Most tools react after a student fails a quiz. Slate forecasts which upcoming concepts a class will
+            struggle with — from decayed mastery of the prerequisites — and hands the teacher a briefing the night
+            before the lesson.
+          </p>
+          <div class="mt-8 flex flex-wrap items-center gap-3">
+            <RouterLink to="/signup" class="nudge-host">
+              <SButton variant="primary">Get started — it's free <span class="nudge">→</span></SButton>
+            </RouterLink>
+            <RouterLink to="/login"><SButton variant="ghost">Explore the sample school</SButton></RouterLink>
           </div>
-          <p class="mt-3 font-display text-lg font-semibold text-ink-900">7 of 12 likely to struggle</p>
-          <div class="mt-5 space-y-4">
-            <div v-for="(row, i) in forecast" :key="row.concept">
-              <div class="flex items-baseline justify-between text-sm">
-                <span class="text-ink-700">{{ row.concept }}</span>
-                <span class="font-mono text-xs text-ink-500">{{ row.pct }}%</span>
-              </div>
-              <div class="mt-1 h-2 w-full overflow-hidden rounded-sm bg-surface-sunken">
-                <div
-                  class="motif-bar h-full rounded-sm"
-                  :class="row.pct > 65 ? 'bg-accent-600' : row.pct > 45 ? 'bg-warning' : 'bg-primary-500'"
-                  :style="{ width: `${row.pct}%`, transitionDelay: `${i * 120}ms`, transformOrigin: 'left' }"
-                />
+        </div>
+
+        <!-- Forecast motif -->
+        <div v-reveal class="lg:justify-self-end">
+          <div class="float card-lift w-full max-w-sm rounded-lg border border-hairline bg-surface p-6 shadow-raised">
+            <div class="flex items-center justify-between">
+              <p class="s-eyebrow">Forecast brief · Ch. 5</p>
+              <span class="rounded-sm bg-accent-100 px-2 py-0.5 text-xs font-semibold text-accent-600">tomorrow</span>
+            </div>
+            <p class="mt-3 font-display text-lg font-semibold text-ink-900">
+              <span v-countup="7" class="text-accent-600">7</span> of 12 likely to struggle
+            </p>
+            <div class="mt-5 space-y-4">
+              <div v-for="(row, i) in forecast" :key="row.concept">
+                <div class="flex items-baseline justify-between text-sm">
+                  <span class="text-ink-700">{{ row.concept }}</span>
+                  <span class="font-mono text-xs text-ink-500">{{ row.pct }}%</span>
+                </div>
+                <div class="mt-1 h-2 w-full overflow-hidden rounded-sm bg-surface-sunken">
+                  <div
+                    class="motif-bar h-full rounded-sm"
+                    :class="row.pct > 65 ? 'bg-accent-600' : row.pct > 45 ? 'bg-warning' : 'bg-primary-500'"
+                    :style="{ width: `${row.pct}%`, transitionDelay: `${i * 120}ms`, transformOrigin: 'left' }"
+                  />
+                </div>
               </div>
             </div>
+            <p class="mt-5 border-t border-hairline pt-4 text-sm leading-6 text-ink-500">
+              Suggested: a 5-minute recap of <span class="text-ink-700">Atomic Structure</span> before you start.
+            </p>
           </div>
-          <p class="mt-5 border-t border-hairline pt-4 text-sm leading-6 text-ink-500">
-            Suggested: a 5-minute recap of <span class="text-ink-700">Atomic Structure</span> before you start.
-          </p>
         </div>
       </div>
     </section>
 
+    <Marquee :items="['Admissions', 'Fees & accounting', 'Confusion forecasts', 'Teach-back grading', 'Doubt-chat', 'Mastery over time', 'Staff & payroll']" />
+
     <!-- Insight statement -->
-    <section class="border-y border-hairline bg-surface/50">
+    <section class="bg-surface/50">
       <div v-reveal class="mx-auto max-w-content px-6 py-16">
         <p class="max-w-3xl font-display text-2xl leading-relaxed text-ink-900 md:text-3xl">
-          A report card tells you what already went wrong. Slate tells you what's <em class="text-primary-600 not-italic">about</em>
-          to — while there's still time to teach differently.
+          A report card tells you what already went wrong. Slate tells you
+          <span class="mark">what's about to</span> — while there's still time to teach differently.
         </p>
       </div>
     </section>
@@ -103,21 +116,18 @@ const forecast = [
           v-for="(step, i) in steps"
           :key="step.n"
           v-reveal
-          class="group bg-surface p-8 transition-colors hover:bg-primary-50"
+          class="group relative bg-surface p-8 transition-colors hover:bg-primary-50"
           :style="{ transitionDelay: `${i * 70}ms` }"
         >
-          <div class="flex items-start gap-4">
-            <span class="font-mono text-sm text-primary-600">{{ step.n }}</span>
-            <div>
-              <h3 class="font-display text-xl font-semibold text-ink-900">{{ step.title }}</h3>
-              <p class="mt-2 text-sm leading-6 text-ink-700">{{ step.body }}</p>
-            </div>
-          </div>
+          <span class="font-mono text-sm text-primary-600">{{ step.n }}</span>
+          <h3 class="mt-3 font-display text-xl font-semibold text-ink-900">{{ step.title }}</h3>
+          <p class="mt-2 text-sm leading-6 text-ink-700">{{ step.body }}</p>
+          <span class="absolute right-8 top-8 text-ink-300 transition-all group-hover:right-6 group-hover:text-primary-600" aria-hidden="true">→</span>
         </div>
       </div>
     </section>
 
-    <!-- Differentiator -->
+    <!-- Differentiator (dark band) -->
     <section class="border-t border-hairline bg-ink-900 text-paper">
       <div class="mx-auto grid max-w-content items-center gap-10 px-6 py-20 lg:grid-cols-2">
         <div v-reveal>
@@ -125,18 +135,22 @@ const forecast = [
           <h2 class="mt-3 font-display text-3xl font-semibold md:text-4xl">Deterministic, not a guess.</h2>
           <p class="mt-5 max-w-reading leading-8 text-paper/80">
             The forecast isn't the AI's opinion. It's graph math over the prerequisite map: each concept's predicted
-            difficulty comes from how much its prerequisites have decayed for that student. The AI names the
-            misconception — the system computes the number.
+            difficulty comes from how much its prerequisites have decayed. The AI names the misconception — the
+            system computes the number.
           </p>
         </div>
-        <div v-reveal class="grid gap-4 sm:grid-cols-2">
-          <div class="rounded-lg border border-paper/15 p-5">
-            <p class="font-display text-3xl font-semibold text-paper">k ≥ 3</p>
-            <p class="mt-1 text-sm text-paper/70">privacy threshold — no misconception shown for fewer than three students, ever</p>
+        <div v-reveal class="grid grid-cols-3 gap-4">
+          <div class="rounded-lg border border-paper/15 p-4 text-center">
+            <p class="font-display text-4xl font-semibold text-paper"><span v-countup="7">7</span></p>
+            <p class="mt-1 text-xs text-paper/70">of 12 flagged before the lesson</p>
           </div>
-          <div class="rounded-lg border border-paper/15 p-5">
-            <p class="font-display text-3xl font-semibold text-paper">0 leaks</p>
-            <p class="mt-1 text-sm text-paper/70">turn-1 doubt-chat gives a guiding question, never the answer</p>
+          <div class="rounded-lg border border-paper/15 p-4 text-center">
+            <p class="font-display text-4xl font-semibold text-paper"><span v-countup="3" data-suffix="+">3+</span></p>
+            <p class="mt-1 text-xs text-paper/70">privacy threshold, always</p>
+          </div>
+          <div class="rounded-lg border border-paper/15 p-4 text-center">
+            <p class="font-display text-4xl font-semibold text-paper"><span v-countup="4">4</span></p>
+            <p class="mt-1 text-xs text-paper/70">structured AI roles</p>
           </div>
         </div>
       </div>
@@ -161,11 +175,11 @@ const forecast = [
       </div>
     </section>
 
-    <!-- Closing CTA -->
+    <!-- Closing -->
     <section class="border-t border-hairline">
       <div v-reveal class="mx-auto max-w-content px-6 py-20 text-center">
         <h2 class="mx-auto max-w-2xl font-display text-3xl font-semibold text-ink-900 md:text-4xl">
-          Built for the teacher who'd rather prevent the confusion than grade it.
+          Built for the teacher who'd rather <Squiggle color="#0F6E6E">prevent</Squiggle> the confusion than grade it.
         </h2>
         <div class="mt-8 flex justify-center">
           <RouterLink to="/signup" class="nudge-host">
