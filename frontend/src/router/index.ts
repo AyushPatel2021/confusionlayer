@@ -8,6 +8,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import("../layouts/PublicLayout.vue"),
     children: [
       { path: "", name: "landing", component: () => import("../views/marketing/LandingView.vue") },
+      { path: "schools", name: "schools", component: () => import("../views/marketing/SchoolsView.vue") },
+      { path: "institutes", name: "institutes", component: () => import("../views/marketing/InstitutesView.vue") },
+      { path: "students", name: "students", component: () => import("../views/marketing/StudentsView.vue") },
+      { path: "pricing", name: "pricing", component: () => import("../views/marketing/PricingView.vue") },
+      { path: "about", name: "about", component: () => import("../views/marketing/AboutView.vue") },
       { path: "login", name: "login", component: () => import("../views/auth/LoginView.vue") },
       { path: "signup", name: "signup", component: () => import("../views/auth/SignupView.vue") },
       { path: "forgot-password", name: "forgot-password", component: () => import("../views/auth/ForgotPasswordView.vue") },
