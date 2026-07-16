@@ -250,6 +250,18 @@ export interface PendingInvite {
   role: string;
 }
 
+export interface AdmissionApplication {
+  id: number;
+  applicant_name: string;
+  applicant_email: string | null;
+  grade: string | null;
+  notes: string | null;
+  status: string;
+  student_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface AuthResponse {
   access_token: string;
   user: User;
@@ -281,6 +293,7 @@ export const useSessionStore = defineStore("session", {
     members: [] as OrgMember[],
     pendingInvites: [] as PendingInvite[],
     plans: [] as OrgPlan[],
+    applications: [] as AdmissionApplication[],
     loading: "",
     error: "",
   }),
@@ -858,6 +871,55 @@ export const useSessionStore = defineStore("session", {
       try {
         await api("/api/org/subscription", { method: "POST", token: this.token, body: JSON.stringify({ plan_code: planCode }) });
         await this.loadOrg();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadApplications() {
+      this.loading = "admissions";
+      this.error = "";
+      try {
+        this.applications = await api<AdmissionApplication[]>("/api/admissions/applications", { token: this.token });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async createApplication(payload: { applicant_name: string; applicant_email?: string; grade?: string; notes?: string }): Promise<boolean> {
+      this.loading = "create-application";
+      this.error = "";
+      try {
+        await api("/api/admissions/applications", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await this.loadApplications();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async setApplicationStatus(id: number, statusValue: string) {
+      this.loading = `application-${id}`;
+      this.error = "";
+      try {
+        await api(`/api/admissions/applications/${id}/status`, { method: "POST", token: this.token, body: JSON.stringify({ status: statusValue }) });
+        await this.loadApplications();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async enrollApplication(id: number) {
+      this.loading = `application-${id}`;
+      this.error = "";
+      try {
+        await api(`/api/admissions/applications/${id}/enroll`, { method: "POST", token: this.token });
+        await this.loadApplications();
       } catch (error) {
         this.error = messageFromError(error);
       } finally {

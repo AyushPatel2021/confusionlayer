@@ -51,6 +51,7 @@ from app.curriculum import DraftChapter, commit_subject_tree, extract_structure
 from app.db import get_db
 from app.forecast import recompute_classroom_forecasts
 from app.models import (
+    AdmissionApplication,
     Chapter,
     ChapterUnlock,
     Classroom,
@@ -418,6 +419,29 @@ class ChangeRoleRequest(BaseModel):
 
 class ChangePlanRequest(BaseModel):
     plan_code: str
+
+
+class ApplicationCreateRequest(BaseModel):
+    applicant_name: str = Field(min_length=1, max_length=160)
+    applicant_email: str | None = Field(default=None, max_length=255)
+    grade: str | None = Field(default=None, max_length=80)
+    notes: str | None = None
+
+
+class ApplicationStatusRequest(BaseModel):
+    status: Literal["reviewing", "accepted", "rejected"]
+
+
+class ApplicationResponse(BaseModel):
+    id: int
+    applicant_name: str
+    applicant_email: str | None
+    grade: str | None
+    notes: str | None
+    status: str
+    student_id: int | None
+    created_at: datetime
+    updated_at: datetime
 
 
 @app.get("/api/health")
@@ -1274,6 +1298,116 @@ def change_subscription(payload: ChangePlanRequest, current_user: User = Depends
         db.add(subscription)
     db.commit()
     return SubscriptionResponse(status="active", plan=_plan_response(plan))
+
+
+def _org_features(db: Session, org_id: int | None) -> list[str]:
+    subscription = _org_subscription(db, org_id) if org_id else None
+    plan = db.get(Plan, subscription.plan_id) if subscription else None
+    return list(plan.features or []) if plan else []
+
+
+def _require_module(db: Session, user: User, module: str) -> None:
+    if module not in _org_features(db, user.org_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your plan does not include the {module} module")
+
+
+def _application_response(app_row: AdmissionApplication) -> ApplicationResponse:
+    return ApplicationResponse(
+        id=app_row.id,
+        applicant_name=app_row.applicant_name,
+        applicant_email=app_row.applicant_email,
+        grade=app_row.grade,
+        notes=app_row.notes,
+        status=app_row.status,
+        student_id=app_row.student_id,
+        created_at=app_row.created_at,
+        updated_at=app_row.updated_at,
+    )
+
+
+def _owned_application(db: Session, user: User, application_id: int) -> AdmissionApplication:
+    _require_org_admin(user)
+    _require_module(db, user, "admissions")
+    application = db.get(AdmissionApplication, application_id)
+    if not application or application.org_id != user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return application
+
+
+@app.get("/api/admissions/applications", response_model=list[ApplicationResponse])
+def list_applications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ApplicationResponse]:
+    _require_org_admin(current_user)
+    _require_module(db, current_user, "admissions")
+    rows = db.scalars(
+        select(AdmissionApplication).where(AdmissionApplication.org_id == current_user.org_id).order_by(AdmissionApplication.id.desc())
+    ).all()
+    return [_application_response(row) for row in rows]
+
+
+@app.post("/api/admissions/applications", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
+def create_application(payload: ApplicationCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApplicationResponse:
+    _require_org_admin(current_user)
+    _require_module(db, current_user, "admissions")
+    application = AdmissionApplication(
+        org_id=current_user.org_id,
+        applicant_name=payload.applicant_name.strip(),
+        applicant_email=(payload.applicant_email or "").strip() or None,
+        grade=(payload.grade or "").strip() or None,
+        notes=payload.notes,
+        status="applied",
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+    return _application_response(application)
+
+
+@app.post("/api/admissions/applications/{application_id}/status", response_model=ApplicationResponse)
+def set_application_status(application_id: int, payload: ApplicationStatusRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApplicationResponse:
+    application = _owned_application(db, current_user, application_id)
+    if application.status == "enrolled":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enrolled applications cannot change status")
+    application.status = payload.status
+    db.commit()
+    db.refresh(application)
+    return _application_response(application)
+
+
+@app.post("/api/admissions/applications/{application_id}/enroll", response_model=ApplicationResponse)
+def enroll_application(application_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApplicationResponse:
+    application = _owned_application(db, current_user, application_id)
+    if application.status != "accepted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Application must be accepted before enrolling")
+
+    # Plan gate: enrolled students can't exceed the plan's cap.
+    subscription = _org_subscription(db, application.org_id)
+    plan = db.get(Plan, subscription.plan_id) if subscription else None
+    max_students = (plan.limits or {}).get("max_students") if plan else None
+    if isinstance(max_students, int):
+        enrolled = db.scalar(
+            select(func.count(AdmissionApplication.id)).where(
+                AdmissionApplication.org_id == application.org_id, AdmissionApplication.status == "enrolled"
+            )
+        ) or 0
+        if enrolled >= max_students:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your plan allows {max_students} enrolled students. Upgrade to enroll more.")
+
+    student = Student(name=application.applicant_name.strip())
+    db.add(student)
+    db.flush()
+    application.student_id = student.id
+    application.status = "enrolled"
+
+    classroom = db.scalar(select(Classroom).where(Classroom.org_id == application.org_id).order_by(Classroom.id))
+    if classroom:
+        db.add(ClassroomStudent(classroom_id=classroom.id, student_id=student.id))
+    if application.applicant_email:
+        organization = db.get(Organization, application.org_id)
+        create_invitation(db, organization, current_user, application.applicant_email, "student")
+
+    db.commit()
+    db.refresh(application)
+    return _application_response(application)
 
 
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:
