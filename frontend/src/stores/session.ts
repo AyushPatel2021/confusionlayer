@@ -72,7 +72,9 @@ interface ConceptDetail {
 
 interface Tutorial {
   explanation: string;
+  analogy?: string;
   worked_example: string;
+  visual?: string;
 }
 
 interface ChatMessage {

@@ -1,15 +1,22 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["explanation", "worked_example"],
+  "required": ["explanation", "analogy", "worked_example", "visual"],
   "properties": {
     "explanation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "analogy": {
       "type": "string",
       "minLength": 1
     },
     "worked_example": {
       "type": "string",
       "minLength": 1
+    },
+    "visual": {
+      "type": "string"
     }
   }
 }

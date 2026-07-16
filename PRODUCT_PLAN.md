@@ -219,9 +219,11 @@ these. The teal migration lands here.
   payslips.
 - **M10 — Parent portal.** Guardian links; read-only child progress/fees/admission.
 - **M11 — Platform admin backend.** Orgs/users/content/usage/audit dashboards.
-- **M12 — Migrate/verify/polish.** Move seeded demo into the full model, re-run eval,
-  accessibility/responsive pass, add migrate-on-deploy step.
-- **M13 (optional) — Real payment gateway.** Only if paid plans are ever introduced.
+- **M12 — Migrate/verify/polish.** Seeded demo runs in the full multi-tenant model, richer
+  Codex tutorial prompts (standard explanation + everyday analogy + ASCII visual), accessibility
+  touch-ups, and **migrate-on-deploy** (backend entrypoint runs `alembic upgrade head` before
+  uvicorn — no more manual migrate step). **Done.**
+- ~~M13 — Real payment gateway~~ **Removed.** All plans are free; no real payments planned.
 
 Each milestone: build → fresh-subagent diff review → deploy per AGENTS.md → verify live.
 

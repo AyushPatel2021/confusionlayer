@@ -140,7 +140,7 @@ class LearningApiTest(TestCase):
         self.assertEqual(response.taxonomy[0].code, "BAL_SUBSCRIPT_CHANGE")
 
     def test_tutorial_generates_for_unlocked_concept_and_records_usage(self) -> None:
-        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Example")) as generate:
+        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Analogy", "Example", "")) as generate:
             response = tutorial(
                 concept_id=self.unlocked_concept.id,
                 payload=TutorialRequest(reading_level="Class 10"),
@@ -153,7 +153,7 @@ class LearningApiTest(TestCase):
         generate.assert_called_once()
 
     def test_tutorial_rejects_locked_concept_before_ai_call(self) -> None:
-        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Example")) as generate:
+        with patch("app.main.generate_tutorial", return_value=TutorialContent("Explanation", "Analogy", "Example", "")) as generate:
             with self.assertRaises(HTTPException) as exc:
                 tutorial(
                     concept_id=self.locked_concept.id,

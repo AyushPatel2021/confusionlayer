@@ -52,7 +52,7 @@ class SelfStartProgressTest(TestCase):
     def test_self_start_generates_for_student_without_unlock(self) -> None:
         with patch(
             "app.main.generate_self_start_tutorial",
-            return_value=TutorialContent("Explanation of black holes.", "Worked example."),
+            return_value=TutorialContent("Explanation of black holes.", "Like a vacuum.", "Worked example.", ""),
         ) as generate:
             response = self_start_tutorial(
                 payload=SelfStartRequest(topic="Black holes", reading_level="Class 10"),

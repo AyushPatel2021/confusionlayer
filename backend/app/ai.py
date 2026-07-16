@@ -19,7 +19,9 @@ from app.models import AiCallUsage, Concept, User
 @dataclass(frozen=True)
 class TutorialContent:
     explanation: str
+    analogy: str
     worked_example: str
+    visual: str
 
 
 @dataclass(frozen=True)
@@ -178,10 +180,14 @@ def parse_tutorial_response(response_payload: dict[str, Any] | str) -> TutorialC
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tutorial response was not valid JSON") from exc
 
     explanation = content.get("explanation")
+    analogy = content.get("analogy")
     worked_example = content.get("worked_example")
+    visual = content.get("visual", "")
     if not isinstance(explanation, str) or not isinstance(worked_example, str):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tutorial response did not match the contract")
-    return TutorialContent(explanation=explanation, worked_example=worked_example)
+    if not isinstance(analogy, str) or not isinstance(visual, str):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Tutorial response did not match the contract")
+    return TutorialContent(explanation=explanation, analogy=analogy, worked_example=worked_example, visual=visual)
 
 
 def parse_doubt_response(response_payload: dict[str, Any] | str) -> DoubtChatContent:
@@ -339,8 +345,17 @@ def _extract_output_text(response_payload: dict[str, Any]) -> str:
 
 def _tutorial_instructions() -> str:
     return (
-        "You are the Tutorial Generator for ConfusionLayer. Return only valid JSON with exactly "
-        "these keys: explanation and worked_example. The explanation must be 200-300 words. "
+        "You are the Tutorial Generator for ConfusionLayer, writing for a school student. Return only valid JSON "
+        "with exactly these keys: explanation, analogy, worked_example, visual.\n"
+        "- explanation (180-260 words): a clear, standard explanation in plain language. Define the idea, then build "
+        "understanding step by step; prefer short sentences; introduce any term the first time you use it.\n"
+        "- analogy (2-4 sentences): one relatable everyday example or analogy that makes the idea click — an example "
+        "should teach more than a definition.\n"
+        "- worked_example: one concrete, fully worked example with the steps shown, so the student can follow the "
+        "method, not just the answer.\n"
+        "- visual: a small plain-text/ASCII diagram, table, or labelled sketch (monospace, <= 12 lines) that "
+        "illustrates the concept — e.g. a labelled diagram, a comparison table, or a simple graph. If a visual would "
+        "not genuinely help this concept, return an empty string.\n"
         "Do not compute mastery scores. Do not invent curriculum scope beyond the provided concept context."
     )
 
@@ -348,10 +363,14 @@ def _tutorial_instructions() -> str:
 def _self_start_instructions() -> str:
     return (
         "You are the Tutorial Generator for ConfusionLayer, handling a student's self-started topic that is "
-        "OUTSIDE the official school syllabus. Return only valid JSON with exactly these keys: explanation and "
-        "worked_example. The explanation must be 200-300 words, pitched at the given reading level. Include one "
-        "simple worked example. Stay on the student's topic; if the topic is unclear or not a real learning topic, "
-        "give a brief, safe general explanation instead. Do not compute mastery scores."
+        "OUTSIDE the official school syllabus. Return only valid JSON with exactly these keys: explanation, analogy, "
+        "worked_example, visual.\n"
+        "- explanation (180-260 words): clear, plain-language, standard explanation pitched at the reading level.\n"
+        "- analogy: one relatable everyday example that makes the idea click.\n"
+        "- worked_example: one concrete example with the steps shown.\n"
+        "- visual: a small plain-text/ASCII diagram or table (<= 12 lines), or an empty string if it wouldn't help.\n"
+        "Stay on the student's topic; if the topic is unclear or not a real learning topic, give a brief, safe "
+        "general explanation instead. Do not compute mastery scores."
     )
 
 
@@ -361,8 +380,8 @@ def _self_start_input(topic: str, reading_level: str, subject_context: dict[str,
         f"Student's typical context (for pitching level only): "
         f"{subject_context.get('board', '')} {subject_context.get('class_level', '')} {subject_context.get('subject', '')}\n"
         f"Self-started topic (outside official syllabus): {topic}\n\n"
-        "Generate a concise tutorial for this topic. Return JSON only: "
-        "{\"explanation\": string, \"worked_example\": string}."
+        "Generate a tutorial for this topic. Return JSON only: "
+        "{\"explanation\": string, \"analogy\": string, \"worked_example\": string, \"visual\": string}."
     )
 
 
@@ -403,8 +422,9 @@ def _tutorial_input(concept: Concept, reading_level: str) -> str:
         f"Chapter: {chapter.title}\n"
         f"Concept: {concept.title}\n"
         f"Reading level: {reading_level}\n\n"
-        "Generate a concise tutorial aligned to this concept. Include one simple worked example. "
-        "Return JSON only: {\"explanation\": string, \"worked_example\": string}."
+        "Generate a tutorial aligned to this concept with a clear explanation, an everyday analogy, one worked "
+        "example, and a small ASCII visual when it helps. Return JSON only: "
+        "{\"explanation\": string, \"analogy\": string, \"worked_example\": string, \"visual\": string}."
     )
 
 

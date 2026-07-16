@@ -150,7 +150,9 @@ class TutorialRequest(BaseModel):
 
 class TutorialResponse(BaseModel):
     explanation: str
+    analogy: str = ""
     worked_example: str
+    visual: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -985,7 +987,7 @@ def tutorial(
     concept = _get_accessible_concept(db, current_user, concept_id)
     check_and_increment_ai_usage(db, current_user)
     content = generate_tutorial(concept, payload.reading_level)
-    return TutorialResponse(explanation=content.explanation, worked_example=content.worked_example)
+    return TutorialResponse(explanation=content.explanation, analogy=content.analogy, worked_example=content.worked_example, visual=content.visual)
 
 
 @app.post("/api/concepts/{concept_id}/doubt-chat", response_model=DoubtChatResponse)
@@ -1104,7 +1106,7 @@ def self_start_tutorial(
         payload.reading_level,
         {"board": subject.board, "class_level": subject.class_level, "subject": subject.name},
     )
-    return TutorialResponse(explanation=content.explanation, worked_example=content.worked_example)
+    return TutorialResponse(explanation=content.explanation, analogy=content.analogy, worked_example=content.worked_example, visual=content.visual)
 
 
 @app.get("/api/student/progress", response_model=StudentProgressResponse)
