@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import { ref } from "vue";
+import { RouterLink, useRouter } from "vue-router";
 
 import SButton from "../../components/ui/SButton.vue";
 import SCard from "../../components/ui/SCard.vue";
 import { useSessionStore } from "../../stores/session";
 
-// M0 placeholder. Real signup/login + org onboarding land in M2/M3. For now this
-// screen offers the existing demo entry so the app stays usable during the rewrite.
 const session = useSessionStore();
 const router = useRouter();
+const email = ref("");
+const password = ref("");
+
+async function submit() {
+  if (await session.login(email.value, password.value)) router.push("/app");
+}
 
 async function demo(role: "teacher" | "student") {
   await session.demoLogin(role);
@@ -17,25 +22,45 @@ async function demo(role: "teacher" | "student") {
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-reading flex-col items-center px-6 py-24">
+  <div class="mx-auto flex max-w-reading flex-col items-center px-6 py-20">
     <SCard raised class="w-full max-w-md">
       <p class="s-eyebrow">Welcome back</p>
       <h1 class="mt-2 font-display text-2xl font-semibold text-ink-900">Sign in to Slate</h1>
-      <p class="mt-2 text-sm leading-6 text-ink-500">
-        Real signup, login, and organization onboarding are coming next. For now, explore the live learning
-        experience with a demo role.
+
+      <form class="mt-6 space-y-4" @submit.prevent="submit">
+        <div>
+          <label class="text-sm font-medium text-ink-700" for="email">Email</label>
+          <input id="email" v-model="email" type="email" autocomplete="email" class="s-input mt-1" required />
+        </div>
+        <div>
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium text-ink-700" for="password">Password</label>
+            <RouterLink to="/forgot-password" class="text-xs font-medium text-primary-600 hover:text-primary-500">
+              Forgot password?
+            </RouterLink>
+          </div>
+          <input id="password" v-model="password" type="password" autocomplete="current-password" class="s-input mt-1" required />
+        </div>
+        <p v-if="session.error" class="rounded-sm border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
+          {{ session.error }}
+        </p>
+        <SButton type="submit" variant="primary" block :disabled="session.loading === 'login'">
+          {{ session.loading === "login" ? "Signing in…" : "Sign in" }}
+        </SButton>
+      </form>
+
+      <p class="mt-4 text-center text-sm text-ink-500">
+        New to Slate?
+        <RouterLink to="/signup" class="font-semibold text-primary-600 hover:text-primary-500">Create an account</RouterLink>
       </p>
-      <div class="mt-6 flex flex-col gap-3">
-        <SButton variant="primary" block :disabled="!!session.loading" @click="demo('teacher')">
-          Continue as a teacher (demo)
-        </SButton>
-        <SButton variant="secondary" block :disabled="!!session.loading" @click="demo('student')">
-          Continue as a student (demo)
-        </SButton>
+
+      <div class="mt-6 border-t border-hairline pt-5">
+        <p class="text-center text-xs font-medium uppercase tracking-wide text-ink-500">Or explore the sample school</p>
+        <div class="mt-3 flex gap-2">
+          <SButton variant="secondary" block :disabled="!!session.loading" @click="demo('teacher')">Teacher demo</SButton>
+          <SButton variant="secondary" block :disabled="!!session.loading" @click="demo('student')">Student demo</SButton>
+        </div>
       </div>
-      <p v-if="session.error" class="mt-4 rounded-sm border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
-        {{ session.error }}
-      </p>
     </SCard>
   </div>
 </template>

@@ -54,8 +54,8 @@ const features = [
           confusion before it derails a lesson.
         </p>
         <div class="mt-8 flex items-center justify-center gap-3">
-          <RouterLink to="/login"><SButton variant="primary">Get started — free</SButton></RouterLink>
-          <RouterLink to="/app"><SButton variant="secondary">Open the app</SButton></RouterLink>
+          <RouterLink to="/signup"><SButton variant="primary">Get started — free</SButton></RouterLink>
+          <RouterLink to="/login"><SButton variant="secondary">Sign in</SButton></RouterLink>
         </div>
         <p class="mt-3 text-xs text-ink-500">All plans are currently free.</p>
       </div>
@@ -69,7 +69,7 @@ const features = [
           <SCard v-for="segment in segments" :id="segment.id" :key="segment.id">
             <h3 class="font-display text-xl font-semibold text-ink-900">{{ segment.name }}</h3>
             <p class="mt-3 text-sm leading-6 text-ink-700">{{ segment.blurb }}</p>
-            <RouterLink :to="`/login`" class="mt-4 inline-block text-sm font-semibold text-primary-600 hover:text-primary-500">
+            <RouterLink :to="`/signup?segment=${segment.id === 'schools' ? 'school' : segment.id === 'institutes' ? 'institute' : 'individual'}`" class="mt-4 inline-block text-sm font-semibold text-primary-600 hover:text-primary-500">
               Get started →
             </RouterLink>
           </SCard>

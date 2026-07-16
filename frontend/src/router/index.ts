@@ -9,20 +9,23 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: "", name: "landing", component: () => import("../views/marketing/LandingView.vue") },
       { path: "login", name: "login", component: () => import("../views/auth/LoginView.vue") },
+      { path: "signup", name: "signup", component: () => import("../views/auth/SignupView.vue") },
+      { path: "forgot-password", name: "forgot-password", component: () => import("../views/auth/ForgotPasswordView.vue") },
+      { path: "reset-password/:token", name: "reset-password", component: () => import("../views/auth/ResetPasswordView.vue") },
+      { path: "accept-invite/:token", name: "accept-invite", component: () => import("../views/auth/AcceptInviteView.vue") },
     ],
   },
   {
     path: "/app",
     component: () => import("../layouts/AppLayout.vue"),
-    // meta.requiresAuth is intentionally off in M0 so the demo stays reachable;
-    // it is enforced once real auth lands (M2).
-    meta: { requiresAuth: false },
+    meta: { requiresAuth: true },
     children: [{ path: "", name: "app-console", component: () => import("../views/app/ConsoleView.vue") }],
   },
   {
     path: "/admin",
     component: () => import("../layouts/AdminLayout.vue"),
-    meta: { requiresAuth: false, roles: ["platform_admin", "admin"] },
+    // Role-gating to platform_admin lands with the admin backend (M11); require auth now.
+    meta: { requiresAuth: true, roles: ["platform_admin", "admin"] },
     children: [{ path: "", name: "admin-home", component: () => import("../views/admin/AdminHomeView.vue") }],
   },
   { path: "/:pathMatch(.*)*", redirect: "/" },

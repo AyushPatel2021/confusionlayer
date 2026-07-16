@@ -22,14 +22,26 @@ from app.mastery import days_since_review, effective_mastery
 from app.auth import (
     AuthResponse,
     DemoLoginRequest,
+    ForgotPasswordRequest,
+    InvitationAcceptRequest,
+    InvitationCreateRequest,
+    InvitationPreviewResponse,
     LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
     SignupRequest,
+    accept_invitation,
     authenticate_user,
     clear_auth_cookie,
     create_access_token,
+    create_invitation,
     create_user,
     get_current_user,
+    get_open_invitation,
     get_or_create_demo_user,
+    register_org,
+    request_password_reset,
+    reset_password,
     set_auth_cookie,
     user_response,
 )
@@ -297,12 +309,25 @@ def health() -> dict[str, str | bool | int]:
     }
 
 
+def _auth_response(db: Session, user: User, response: Response) -> AuthResponse:
+    token = create_access_token(user)
+    set_auth_cookie(response, token)
+    organization = db.get(Organization, user.org_id) if user.org_id else None
+    return AuthResponse(access_token=token, user=user_response(user, organization))
+
+
+@app.post("/api/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
+    user, organization = register_org(db, payload)
+    token = create_access_token(user)
+    set_auth_cookie(response, token)
+    return AuthResponse(access_token=token, user=user_response(user, organization))
+
+
 @app.post("/api/auth/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
     user = create_user(db, payload)
-    token = create_access_token(user)
-    set_auth_cookie(response, token)
-    return AuthResponse(access_token=token, user=user_response(user))
+    return _auth_response(db, user, response)
 
 
 @app.post("/api/auth/login", response_model=AuthResponse)
@@ -310,23 +335,66 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     user = authenticate_user(db, payload.email, payload.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    token = create_access_token(user)
-    set_auth_cookie(response, token)
-    return AuthResponse(access_token=token, user=user_response(user))
+    return _auth_response(db, user, response)
 
 
 @app.post("/api/auth/demo", response_model=AuthResponse)
 def demo_login(payload: DemoLoginRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
     user = get_or_create_demo_user(db, payload.role)
+    return _auth_response(db, user, response)
+
+
+@app.post("/api/auth/password/forgot")
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> dict[str, bool]:
+    request_password_reset(db, payload.email)
+    return {"ok": True}
+
+
+@app.post("/api/auth/password/reset")
+def do_reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> dict[str, bool]:
+    reset_password(db, payload.token, payload.password)
+    return {"ok": True}
+
+
+@app.get("/api/auth/invitations/{token}", response_model=InvitationPreviewResponse)
+def invitation_preview(token: str, db: Session = Depends(get_db)) -> InvitationPreviewResponse:
+    invitation = get_open_invitation(db, token)
+    organization = db.get(Organization, invitation.org_id)
+    return InvitationPreviewResponse(
+        email=invitation.email,
+        role=invitation.role,
+        organization_name=organization.name if organization else "",
+    )
+
+
+@app.post("/api/auth/invitations/accept", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+def invitation_accept(payload: InvitationAcceptRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
+    user, organization = accept_invitation(db, payload.token, payload.password, payload.name)
     token = create_access_token(user)
     set_auth_cookie(response, token)
-    return AuthResponse(access_token=token, user=user_response(user))
+    return AuthResponse(access_token=token, user=user_response(user, organization))
+
+
+@app.post("/api/org/invitations", status_code=status.HTTP_201_CREATED)
+def create_org_invitation(
+    payload: InvitationCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    if current_user.role not in ("owner", "school_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an owner or school admin can invite members")
+    organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
+    if not organization:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No organization for this user")
+    invitation = create_invitation(db, organization, current_user, payload.email, payload.role)
+    return {"token": invitation.token, "email": invitation.email, "role": invitation.role}
 
 
 @app.get("/api/auth/me", response_model=AuthResponse)
-def me(current_user: User = Depends(get_current_user)) -> AuthResponse:
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AuthResponse:
     token = create_access_token(current_user)
-    return AuthResponse(access_token=token, user=user_response(current_user))
+    organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
+    return AuthResponse(access_token=token, user=user_response(current_user, organization))
 
 
 @app.post("/api/auth/logout")

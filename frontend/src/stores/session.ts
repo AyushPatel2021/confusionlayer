@@ -1,12 +1,30 @@
 import { defineStore } from "pinia";
 
-type Role = "admin" | "teacher" | "student";
+type Role =
+  | "admin"
+  | "owner"
+  | "school_admin"
+  | "accountant"
+  | "hr"
+  | "teacher"
+  | "student"
+  | "parent"
+  | "platform_admin";
 
 interface User {
   id: number;
   email: string;
   role: Role;
-  name: string;
+  name: string | null;
+  org_id: number | null;
+  org_name: string | null;
+  segment: string | null;
+}
+
+export interface InvitationPreview {
+  email: string;
+  role: string;
+  organization_name: string;
 }
 
 interface Subject {
@@ -220,6 +238,120 @@ export const useSessionStore = defineStore("session", {
         await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    applyAuth(response: AuthResponse) {
+      this.token = response.access_token;
+      this.user = response.user;
+      localStorage.setItem(tokenKey, response.access_token);
+      this.selectedConcept = null;
+      this.tutorial = null;
+      this.chatMessages = [];
+      this.quizGrade = null;
+      this.teachBackGrade = null;
+      this.forecastBrief = null;
+      this.confusionBrief = null;
+      this.forecastNarratives = {};
+      this.confusionNarratives = {};
+      this.selfStartTutorial = null;
+      this.progress = null;
+    },
+    async register(payload: {
+      org_name: string;
+      segment: string;
+      email: string;
+      password: string;
+      name: string;
+    }): Promise<boolean> {
+      this.loading = "register";
+      this.error = "";
+      try {
+        const response = await api<AuthResponse>("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        this.applyAuth(response);
+        await this.loadSyllabus().catch(() => undefined);
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async login(email: string, password: string): Promise<boolean> {
+      this.loading = "login";
+      this.error = "";
+      try {
+        const response = await api<AuthResponse>("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        this.applyAuth(response);
+        await this.loadSyllabus().catch(() => undefined);
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async forgotPassword(email: string): Promise<boolean> {
+      this.loading = "forgot";
+      this.error = "";
+      try {
+        await api("/api/auth/password/forgot", { method: "POST", body: JSON.stringify({ email }) });
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async resetPassword(token: string, password: string): Promise<boolean> {
+      this.loading = "reset";
+      this.error = "";
+      try {
+        await api("/api/auth/password/reset", { method: "POST", body: JSON.stringify({ token, password }) });
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async fetchInvitation(token: string): Promise<InvitationPreview | null> {
+      this.loading = "invitation";
+      this.error = "";
+      try {
+        return await api<InvitationPreview>(`/api/auth/invitations/${token}`);
+      } catch (error) {
+        this.error = messageFromError(error);
+        return null;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async acceptInvitation(token: string, password: string, name: string): Promise<boolean> {
+      this.loading = "accept";
+      this.error = "";
+      try {
+        const response = await api<AuthResponse>("/api/auth/invitations/accept", {
+          method: "POST",
+          body: JSON.stringify({ token, password, name }),
+        });
+        this.applyAuth(response);
+        await this.loadSyllabus().catch(() => undefined);
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
       } finally {
         this.loading = "";
       }

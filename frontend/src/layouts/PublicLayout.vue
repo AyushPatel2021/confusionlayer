@@ -19,7 +19,7 @@ import SButton from "../components/ui/SButton.vue";
         </nav>
         <div class="flex items-center gap-2">
           <RouterLink to="/login"><SButton variant="ghost">Sign in</SButton></RouterLink>
-          <RouterLink to="/app"><SButton variant="primary">Open the app</SButton></RouterLink>
+          <RouterLink to="/signup"><SButton variant="primary">Get started</SButton></RouterLink>
         </div>
       </div>
     </header>

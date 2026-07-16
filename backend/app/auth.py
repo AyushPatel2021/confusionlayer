@@ -15,10 +15,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import re
+
 from app.db import get_db
-from app.models import Organization, Student, Teacher, User
+from app.mail import send_email
+from app.models import Invitation, Organization, PasswordReset, Plan, Student, Subscription, Teacher, User
 
 Role = Literal["admin", "teacher", "student"]
+Segment = Literal["school", "institute", "individual"]
+# Invitable roles are enforced by the Literal on InvitationCreateRequest.role
+# (never owner or platform_admin).
+_SEGMENT_DEFAULT_PLAN = {"school": "school_free", "institute": "institute_free", "individual": "individual_free"}
 ACCESS_TOKEN_COOKIE = "access_token"
 JWT_ALGORITHM = "HS256"
 PBKDF2_ITERATIONS = 210_000
@@ -41,10 +48,48 @@ class DemoLoginRequest(BaseModel):
     role: Literal["teacher", "student"] = "teacher"
 
 
+class RegisterRequest(BaseModel):
+    org_name: str = Field(min_length=1, max_length=160)
+    segment: Segment
+    email: str = Field(min_length=3, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class InvitationCreateRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: Literal["school_admin", "accountant", "hr", "teacher", "student", "parent"]
+
+
+class InvitationAcceptRequest(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(min_length=1, max_length=120)
+
+
+class InvitationPreviewResponse(BaseModel):
+    email: str
+    role: str
+    organization_name: str
+
+
 class AuthUserResponse(BaseModel):
     id: int
     email: str
-    role: Role
+    name: str | None = None
+    role: str
+    org_id: int | None = None
+    org_name: str | None = None
+    segment: str | None = None
     teacher_id: int | None = None
     student_id: int | None = None
 
@@ -137,11 +182,15 @@ def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(key=ACCESS_TOKEN_COOKIE, path="/")
 
 
-def user_response(user: User) -> AuthUserResponse:
+def user_response(user: User, organization: Organization | None = None) -> AuthUserResponse:
     return AuthUserResponse(
         id=user.id,
         email=user.email,
-        role=user.role,  # type: ignore[arg-type]
+        name=user.name,
+        role=user.role,
+        org_id=user.org_id,
+        org_name=organization.name if organization else None,
+        segment=organization.segment if organization else None,
         teacher_id=user.teacher_id,
         student_id=user.student_id,
     )
@@ -228,6 +277,136 @@ def get_or_create_demo_user(db: Session, role: Literal["teacher", "student"]) ->
     db.commit()
     db.refresh(user)
     return user
+
+
+def _is_past(moment: datetime) -> bool:
+    # Stored timestamps come back naive on SQLite and tz-aware on Postgres; normalize.
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment < datetime.now(UTC)
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.strip().lower()).strip("-")
+    return slug or "org"
+
+
+def _unique_org_slug(db: Session, name: str) -> str:
+    base = _slugify(name)
+    slug = base
+    suffix = 2
+    while db.scalar(select(Organization).where(Organization.slug == slug)):
+        slug = f"{base}-{suffix}"
+        suffix += 1
+    return slug
+
+
+def register_org(db: Session, payload: RegisterRequest) -> tuple[User, Organization]:
+    email = normalize_email(payload.email)
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
+
+    plan = db.scalar(select(Plan).where(Plan.code == _SEGMENT_DEFAULT_PLAN[payload.segment]))
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Plans are not configured")
+
+    org = Organization(name=payload.org_name.strip(), slug=_unique_org_slug(db, payload.org_name), segment=payload.segment)
+    db.add(org)
+    db.flush()
+    db.add(Subscription(org_id=org.id, plan_id=plan.id, status="active"))
+    user = User(
+        org_id=org.id,
+        email=email,
+        name=payload.name.strip(),
+        password_hash=hash_password(payload.password),
+        role="owner",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.refresh(org)
+    return user, org
+
+
+def request_password_reset(db: Session, email: str) -> None:
+    # Always behaves the same regardless of whether the email exists (no enumeration).
+    user = db.scalar(select(User).where(User.email == normalize_email(email)))
+    if not user:
+        return
+    token = secrets.token_urlsafe(32)
+    db.add(PasswordReset(user_id=user.id, token=token, expires_at=datetime.now(UTC) + timedelta(hours=1)))
+    db.commit()
+    send_email(user.email, "Reset your Slate password", f"Use this link to reset your password: /reset-password/{token}")
+
+
+def reset_password(db: Session, token: str, new_password: str) -> None:
+    reset = db.scalar(select(PasswordReset).where(PasswordReset.token == token))
+    if not reset or reset.used_at is not None or _is_past(reset.expires_at):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+    user = db.get(User, reset.user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+    user.password_hash = hash_password(new_password)
+    reset.used_at = datetime.now(UTC)
+    db.commit()
+
+
+def create_invitation(db: Session, org: Organization, inviter: User, email: str, role: str) -> Invitation:
+    invitation = Invitation(
+        org_id=org.id,
+        email=normalize_email(email),
+        role=role,
+        token=secrets.token_urlsafe(32),
+        invited_by=inviter.id,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    db.add(invitation)
+    db.commit()
+    db.refresh(invitation)
+    send_email(email, f"You're invited to {org.name} on Slate", f"Accept your invite: /accept-invite/{invitation.token}")
+    return invitation
+
+
+def get_open_invitation(db: Session, token: str) -> Invitation:
+    invitation = db.scalar(select(Invitation).where(Invitation.token == token))
+    if not invitation or invitation.accepted_at is not None or _is_past(invitation.expires_at):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation is invalid or has expired")
+    return invitation
+
+
+def accept_invitation(db: Session, token: str, password: str, name: str) -> tuple[User, Organization]:
+    invitation = get_open_invitation(db, token)
+    if db.scalar(select(User).where(User.email == invitation.email)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
+
+    teacher_id: int | None = None
+    student_id: int | None = None
+    if invitation.role == "teacher":
+        teacher = Teacher(name=name.strip())
+        db.add(teacher)
+        db.flush()
+        teacher_id = teacher.id
+    elif invitation.role == "student":
+        student = Student(name=name.strip())
+        db.add(student)
+        db.flush()
+        student_id = student.id
+
+    user = User(
+        org_id=invitation.org_id,
+        email=invitation.email,
+        name=name.strip(),
+        password_hash=hash_password(password),
+        role=invitation.role,
+        teacher_id=teacher_id,
+        student_id=student_id,
+    )
+    db.add(user)
+    invitation.accepted_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(user)
+    organization = db.get(Organization, invitation.org_id)
+    return user, organization
 
 
 def _jwt_secret() -> bytes:
