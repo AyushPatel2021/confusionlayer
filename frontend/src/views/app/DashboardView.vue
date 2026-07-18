@@ -29,6 +29,7 @@ const nextAction = computed(() => {
 
 onMounted(async () => {
   await session.loadDashboard();
+  if (session.isStudent) await session.loadExamOutcome();
   renderChart();
 });
 onBeforeUnmount(() => chart?.destroy());
@@ -64,6 +65,7 @@ function renderChart() {
         </div>
         <RouterLink :to="nextAction.to" class="rounded-md bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500">{{ nextAction.label }}</RouterLink>
       </section>
+      <section v-if="session.isStudent && session.examOutcome?.outcomes.length" class="rounded-lg border border-hairline bg-surface p-5"><div class="flex items-center justify-between gap-3"><div><p class="s-eyebrow">Five-minute decay drills</p><p class="mt-1 text-sm text-ink-600">Review the concepts most likely to fade before your exam.</p></div><RouterLink to="/app/exam-outcome" class="text-sm font-semibold text-primary-700 hover:underline">See exam outlook</RouterLink></div><div class="mt-4 grid gap-3 md:grid-cols-3"><RouterLink v-for="item in session.examOutcome.outcomes.slice(0, 3)" :key="item.concept_id" :to="`/app/learn/${item.concept_id}`" class="rounded-md border border-hairline bg-paper p-4 hover:border-primary-500"><p class="font-semibold text-ink-900">{{ item.title }}</p><p class="mt-1 text-xs text-ink-500">{{ Math.round(item.risk * 100) }}% forecast risk</p><p class="mt-3 text-sm font-semibold text-primary-700">Start drill</p></RouterLink></div></section>
       <section class="rounded-lg border border-hairline bg-surface p-5">
         <p class="s-eyebrow">{{ session.dashboard.chart.label }}</p>
         <div class="mt-4 h-64"><canvas ref="canvas" /></div>

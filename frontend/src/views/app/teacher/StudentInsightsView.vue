@@ -62,6 +62,7 @@ const tone = (value: number) => value >= 0.8 ? "success" : value >= 0.6 ? "warni
           <ul class="mt-4 space-y-3"><li v-for="item in session.studentInsights.weaknesses" :key="item.concept_id" class="flex items-center justify-between gap-3"><span><b class="block text-sm text-ink-900">{{ item.title }}</b><span class="text-xs text-ink-500">{{ item.chapter_title }}<template v-if="item.forecast_risk"> | forecast risk {{ mastery(item.forecast_risk) }}</template></span></span><SBadge :tone="tone(item.effective_mastery)">{{ mastery(item.effective_mastery) }}</SBadge></li></ul>
         </section>
       </div>
+      <section class="rounded-lg border border-hairline bg-surface p-5"><p class="s-eyebrow">Learner map</p><div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"><div v-for="item in session.studentInsights.concepts" :key="item.concept_id" class="rounded-md border border-hairline p-3"><p class="truncate text-sm font-semibold text-ink-900">{{ item.title }}</p><p class="mt-2 text-xs text-ink-500">{{ item.chapter_title }}</p><div class="mt-3 h-2 overflow-hidden rounded bg-surface-sunken"><div class="h-full bg-primary-600" :style="{ width: `${Math.round(item.effective_mastery * 100)}%` }" /></div><p class="mt-2 text-xs font-semibold text-ink-700">{{ mastery(item.effective_mastery) }} mastery</p></div></div></section>
     </template>
     <p v-else class="text-sm text-ink-500">Choose a classroom with enrolled students to review progress.</p>
   </div>

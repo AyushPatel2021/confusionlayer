@@ -380,6 +380,7 @@ class StudentInsightsResponse(BaseModel):
     average_effective_mastery: float
     strengths: list[StudentInsightConceptResponse]
     weaknesses: list[StudentInsightConceptResponse]
+    concepts: list[StudentInsightConceptResponse]
 
 
 class ExamOutcomeItemResponse(BaseModel):
@@ -1306,6 +1307,7 @@ def student_insights(
         average_effective_mastery=round(sum(item.effective_mastery for item in concepts) / len(concepts), 3) if concepts else 0,
         strengths=list(reversed(ranked[-3:])),
         weaknesses=ranked[:3],
+        concepts=ranked,
     )
 
 

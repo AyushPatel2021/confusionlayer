@@ -189,6 +189,7 @@ export interface StudentInsights {
   average_effective_mastery: number;
   strengths: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
   weaknesses: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
+  concepts: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
 }
 export interface ExamOutcome { days_to_exam: number; outcomes: Array<{ concept_id: number; title: string; chapter_title: string; risk: number; effective_mastery: number }>; }
 
