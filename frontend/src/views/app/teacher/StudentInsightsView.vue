@@ -9,11 +9,12 @@ import { useSessionStore } from "../../../stores/session";
 const session = useSessionStore();
 const classroomId = ref<number | null>(null);
 const studentId = ref<number | null>(null);
-const selectedClassroom = computed(() => session.classrooms.find((room) => room.id === classroomId.value));
+const classrooms = computed(() => session.dashboard?.classrooms || []);
+const selectedClassroom = computed(() => classrooms.value.find((room) => room.id === classroomId.value));
 
 onMounted(async () => {
   await session.loadDashboard();
-  if (session.dashboard?.classrooms?.length) classroomId.value = session.dashboard.classrooms[0].id;
+  if (classrooms.value.length) classroomId.value = classrooms.value[0].id;
 });
 
 watch(classroomId, (id) => {
@@ -35,7 +36,7 @@ const tone = (value: number) => value >= 0.8 ? "success" : value >= 0.6 ? "warni
     <div class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-2">
       <label class="text-sm">Classroom
         <select v-model="classroomId" class="s-input mt-1">
-          <option v-for="room in session.dashboard?.classrooms || []" :key="room.id" :value="room.id">{{ room.name }}</option>
+          <option v-for="room in classrooms" :key="room.id" :value="room.id">{{ room.name }}</option>
         </select>
       </label>
       <label class="text-sm">Student
