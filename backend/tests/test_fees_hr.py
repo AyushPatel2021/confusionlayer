@@ -23,12 +23,14 @@ from app.main import (
     PayrollRunCreateRequest,
     create_employee,
     create_fee_structure,
+    delete_fee_structure,
     apply_fee_structure,
     create_invoice,
     create_payroll_run,
     fee_student_options,
     fees_summary,
     list_invoices,
+    update_fee_structure,
     record_payment,
     void_invoice,
 )
@@ -104,7 +106,10 @@ class FeesHrTest(TestCase):
         self.assertEqual(summary.outstanding_cents, 5000)
 
     def test_fee_structure_and_module_gate(self) -> None:
-        create_fee_structure(FeeStructureCreateRequest(name="Term 1", amount_cents=20000), current_user=self.owner, db=self.db)
+        structure = create_fee_structure(FeeStructureCreateRequest(name="Term 1", amount_cents=20000), current_user=self.owner, db=self.db)
+        updated = update_fee_structure(structure.id, FeeStructureCreateRequest(name="Term 1 revised", amount_cents=25000), current_user=self.owner, db=self.db)
+        self.assertEqual((updated.name, updated.amount_cents), ("Term 1 revised", 25000))
+        delete_fee_structure(structure.id, current_user=self.owner, db=self.db)
         self.assertEqual(len(list_invoices(current_user=self.owner, db=self.db)), 0)
         with self.assertRaises(HTTPException) as exc:  # institute plan lacks accounting
             create_invoice(InvoiceCreateRequest(recipient_name="x", amount_cents=1), current_user=self.inst_owner, db=self.db)

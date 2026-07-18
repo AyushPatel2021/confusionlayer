@@ -1269,6 +1269,14 @@ export const useSessionStore = defineStore("session", {
       try { await api("/api/fees/structures", { method: "POST", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
       catch (error) { this.error = messageFromError(error); return false; }
     },
+    async updateFeeStructure(structureId: number, payload: { name: string; amount_cents: number }): Promise<boolean> {
+      try { await api(`/api/fees/structures/${structureId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+    },
+    async deleteFeeStructure(structureId: number): Promise<boolean> {
+      try { await api(`/api/fees/structures/${structureId}`, { method: "DELETE" }); await this.loadFees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+    },
     async applyFeeStructure(structureId: number, studentIds: number[]): Promise<boolean> {
       this.loading = "apply-fee-structure";
       this.error = "";

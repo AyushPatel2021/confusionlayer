@@ -2277,6 +2277,33 @@ def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User 
     return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
 
 
+def _owned_fee_structure(db: Session, current_user: User, structure_id: int) -> FeeStructure:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    structure = db.get(FeeStructure, structure_id)
+    if not structure or structure.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fee structure not found")
+    return structure
+
+
+@app.patch("/api/fees/structures/{structure_id}", response_model=FeeStructureResponse)
+def update_fee_structure(structure_id: int, payload: FeeStructureCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FeeStructureResponse:
+    structure = _owned_fee_structure(db, current_user, structure_id)
+    structure.name = payload.name.strip()
+    structure.amount_cents = payload.amount_cents
+    db.commit()
+    db.refresh(structure)
+    return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
+
+
+@app.delete("/api/fees/structures/{structure_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_fee_structure(structure_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    structure = _owned_fee_structure(db, current_user, structure_id)
+    db.delete(structure)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/api/fees/structures/{structure_id}/apply", response_model=list[InvoiceResponse], status_code=status.HTTP_201_CREATED)
 def apply_fee_structure(structure_id: int, payload: FeeStructureApplyRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[InvoiceResponse]:
     _require_roles(current_user, FEES_ROLES)
