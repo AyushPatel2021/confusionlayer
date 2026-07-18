@@ -9,7 +9,7 @@ import { useSessionStore, type AdmissionApplication } from "../../../stores/sess
 
 const session = useSessionStore();
 const showForm = ref(false);
-const form = ref({ applicant_name: "", applicant_email: "", grade: "", notes: "" });
+const form = ref({ applicant_name: "", applicant_email: "", grade: "", source: "", date_of_birth: "", notes: "" });
 const editingId = ref<number | null>(null);
 
 const columns = [
@@ -31,14 +31,14 @@ async function submit() {
     ? await session.updateApplication(editingId.value, { ...form.value })
     : await session.createApplication({ ...form.value });
   if (saved) {
-    form.value = { applicant_name: "", applicant_email: "", grade: "", notes: "" };
+    form.value = { applicant_name: "", applicant_email: "", grade: "", source: "", date_of_birth: "", notes: "" };
     editingId.value = null;
     showForm.value = false;
   }
 }
 function edit(app: AdmissionApplication) {
   editingId.value = app.id;
-  form.value = { applicant_name: app.applicant_name, applicant_email: app.applicant_email || "", grade: app.grade || "", notes: app.notes || "" };
+  form.value = { applicant_name: app.applicant_name, applicant_email: app.applicant_email || "", grade: app.grade || "", source: app.source || "", date_of_birth: app.date_of_birth || "", notes: app.notes || "" };
   showForm.value = true;
 }
 async function remove(app: AdmissionApplication) {
@@ -58,6 +58,8 @@ async function remove(app: AdmissionApplication) {
       <label class="text-sm">Applicant name<input v-model="form.applicant_name" class="s-input mt-1" required /></label>
       <label class="text-sm">Email<input v-model="form.applicant_email" type="email" class="s-input mt-1" /></label>
       <label class="text-sm">Grade applying for<input v-model="form.grade" class="s-input mt-1" /></label>
+      <label class="text-sm">Source<input v-model="form.source" class="s-input mt-1" placeholder="Referral, walk-in..." /></label>
+      <label class="text-sm">Date of birth<input v-model="form.date_of_birth" type="date" class="s-input mt-1" /></label>
       <label class="text-sm">Notes<input v-model="form.notes" class="s-input mt-1" /></label>
       <div class="sm:col-span-2">
         <SButton type="submit" variant="primary" :disabled="!form.applicant_name.trim() || session.loading === 'create-application'">
@@ -78,6 +80,7 @@ async function remove(app: AdmissionApplication) {
           <article v-for="app in byStatus(col.key)" :key="app.id" class="card-lift rounded-md border border-hairline bg-surface p-3">
             <p class="text-sm font-semibold text-ink-900">{{ app.applicant_name }}</p>
             <p v-if="app.grade" class="text-xs text-ink-500">Grade {{ app.grade }}</p>
+            <p v-if="app.source" class="text-xs text-ink-500">{{ app.source }}</p>
             <p v-if="app.applicant_email" class="truncate text-xs text-ink-500">{{ app.applicant_email }}</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <SButton v-if="app.status !== 'enrolled'" variant="ghost" @click="edit(app)">Edit</SButton>

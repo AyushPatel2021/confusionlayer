@@ -273,6 +273,8 @@ export interface AdmissionApplication {
   applicant_name: string;
   applicant_email: string | null;
   grade: string | null;
+  source: string | null;
+  date_of_birth: string | null;
   notes: string | null;
   status: string;
   student_id: number | null;
@@ -304,6 +306,8 @@ export interface Employee {
   name: string;
   email: string | null;
   designation: string | null;
+  phone: string | null;
+  join_date: string | null;
   salary_cents: number;
   status: string;
 }
@@ -1182,7 +1186,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async createApplication(payload: { applicant_name: string; applicant_email?: string; grade?: string; notes?: string }): Promise<boolean> {
+    async createApplication(payload: { applicant_name: string; applicant_email?: string; grade?: string; source?: string; date_of_birth?: string; notes?: string }): Promise<boolean> {
       this.loading = "create-application";
       this.error = "";
       try {
@@ -1196,7 +1200,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async updateApplication(id: number, payload: { applicant_name: string; applicant_email?: string; grade?: string; notes?: string }): Promise<boolean> {
+    async updateApplication(id: number, payload: { applicant_name: string; applicant_email?: string; grade?: string; source?: string; date_of_birth?: string; notes?: string }): Promise<boolean> {
       this.loading = `application-${id}`;
       this.error = "";
       try { await api(`/api/admissions/applications/${id}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadApplications(); return true; }
@@ -1302,7 +1306,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async createEmployee(payload: { name: string; email?: string; designation?: string; salary_cents: number }): Promise<boolean> {
+    async createEmployee(payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number }): Promise<boolean> {
       this.loading = "create-employee";
       this.error = "";
       try {
@@ -1316,7 +1320,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async updateEmployee(employeeId: number, payload: { name: string; email?: string; designation?: string; salary_cents: number }): Promise<boolean> {
+    async updateEmployee(employeeId: number, payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number }): Promise<boolean> {
       this.loading = `employee-${employeeId}`;
       this.error = "";
       try { await api(`/api/hr/employees/${employeeId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadEmployees(); return true; }

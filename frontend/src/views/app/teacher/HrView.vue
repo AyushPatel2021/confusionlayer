@@ -9,7 +9,7 @@ import { useSessionStore } from "../../../stores/session";
 
 const session = useSessionStore();
 const showForm = ref(false);
-const form = ref({ name: "", email: "", designation: "", salary: "" });
+const form = ref({ name: "", email: "", designation: "", phone: "", join_date: "", salary: "" });
 const editingId = ref<number | null>(null);
 const period = ref("");
 
@@ -22,14 +22,15 @@ const money = (cents: number) => `₹${(cents / 100).toLocaleString("en-IN", { m
 
 async function addEmployee() {
   const salary_cents = Math.round(parseFloat(form.value.salary || "0") * 100);
-  const saved = editingId.value ? await session.updateEmployee(editingId.value, { name: form.value.name, email: form.value.email || undefined, designation: form.value.designation || undefined, salary_cents }) : await session.createEmployee({ name: form.value.name, email: form.value.email || undefined, designation: form.value.designation || undefined, salary_cents });
+  const payload = { name: form.value.name, email: form.value.email || undefined, designation: form.value.designation || undefined, phone: form.value.phone || undefined, join_date: form.value.join_date || undefined, salary_cents };
+  const saved = editingId.value ? await session.updateEmployee(editingId.value, payload) : await session.createEmployee(payload);
   if (saved) {
-    form.value = { name: "", email: "", designation: "", salary: "" };
+    form.value = { name: "", email: "", designation: "", phone: "", join_date: "", salary: "" };
     editingId.value = null;
     showForm.value = false;
   }
 }
-function edit(employee: { id: number; name: string; email: string | null; designation: string | null; salary_cents: number }) { editingId.value = employee.id; form.value = { name: employee.name, email: employee.email || "", designation: employee.designation || "", salary: String(employee.salary_cents / 100) }; showForm.value = true; }
+function edit(employee: { id: number; name: string; email: string | null; designation: string | null; phone: string | null; join_date: string | null; salary_cents: number }) { editingId.value = employee.id; form.value = { name: employee.name, email: employee.email || "", designation: employee.designation || "", phone: employee.phone || "", join_date: employee.join_date || "", salary: String(employee.salary_cents / 100) }; showForm.value = true; }
 async function run() {
   if (period.value.trim() && (await session.runPayroll(period.value.trim()))) period.value = "";
 }
@@ -43,12 +44,14 @@ async function run() {
       </template>
     </SPageHeader>
 
-    <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-4" @submit.prevent="addEmployee">
+    <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-3" @submit.prevent="addEmployee">
       <label class="text-sm">Name<input v-model="form.name" class="s-input mt-1" required /></label>
       <label class="text-sm">Email<input v-model="form.email" type="email" class="s-input mt-1" /></label>
       <label class="text-sm">Designation<input v-model="form.designation" class="s-input mt-1" /></label>
+      <label class="text-sm">Phone<input v-model="form.phone" class="s-input mt-1" /></label>
+      <label class="text-sm">Join date<input v-model="form.join_date" type="date" class="s-input mt-1" /></label>
       <label class="text-sm">Monthly salary (₹)<input v-model="form.salary" type="number" min="0" class="s-input mt-1" /></label>
-      <div class="sm:col-span-4"><SButton type="submit" variant="primary" :disabled="!form.name.trim() || session.loading === 'create-employee'">{{ editingId ? "Save employee" : "Add employee" }}</SButton></div>
+      <div class="sm:col-span-3"><SButton type="submit" variant="primary" :disabled="!form.name.trim() || session.loading === 'create-employee'">{{ editingId ? "Save employee" : "Add employee" }}</SButton></div>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 

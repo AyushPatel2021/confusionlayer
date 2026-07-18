@@ -541,6 +541,8 @@ class ApplicationCreateRequest(BaseModel):
     applicant_name: str = Field(min_length=1, max_length=160)
     applicant_email: str | None = Field(default=None, max_length=255)
     grade: str | None = Field(default=None, max_length=80)
+    source: str | None = Field(default=None, max_length=80)
+    date_of_birth: date | None = None
     notes: str | None = None
 
 
@@ -553,6 +555,8 @@ class ApplicationResponse(BaseModel):
     applicant_name: str
     applicant_email: str | None
     grade: str | None
+    source: str | None
+    date_of_birth: date | None
     notes: str | None
     status: str
     student_id: int | None
@@ -610,6 +614,8 @@ class EmployeeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     email: str | None = Field(default=None, max_length=255)
     designation: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    join_date: date | None = None
     salary_cents: int = Field(default=0, ge=0)
 
 
@@ -677,6 +683,8 @@ class EmployeeResponse(BaseModel):
     name: str
     email: str | None
     designation: str | None
+    phone: str | None
+    join_date: date | None
     salary_cents: int
     status: str
 
@@ -2024,6 +2032,8 @@ def _application_response(app_row: AdmissionApplication) -> ApplicationResponse:
         applicant_name=app_row.applicant_name,
         applicant_email=app_row.applicant_email,
         grade=app_row.grade,
+        source=app_row.source,
+        date_of_birth=app_row.date_of_birth,
         notes=app_row.notes,
         status=app_row.status,
         student_id=app_row.student_id,
@@ -2062,6 +2072,8 @@ def create_application(payload: ApplicationCreateRequest, current_user: User = D
         applicant_name=payload.applicant_name.strip(),
         applicant_email=(payload.applicant_email or "").strip() or None,
         grade=(payload.grade or "").strip() or None,
+        source=(payload.source or "").strip() or None,
+        date_of_birth=payload.date_of_birth,
         notes=payload.notes,
         status="applied",
     )
@@ -2077,6 +2089,8 @@ def update_application(application_id: int, payload: ApplicationCreateRequest, c
     application.applicant_name = payload.applicant_name.strip()
     application.applicant_email = (payload.applicant_email or "").strip() or None
     application.grade = (payload.grade or "").strip() or None
+    application.source = (payload.source or "").strip() or None
+    application.date_of_birth = payload.date_of_birth
     application.notes = payload.notes
     db.commit()
     db.refresh(application)
@@ -2123,7 +2137,7 @@ def enroll_application(application_id: int, current_user: User = Depends(get_cur
         if enrolled >= max_students:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your plan allows {max_students} enrolled students. Upgrade to enroll more.")
 
-    student = Student(name=application.applicant_name.strip())
+    student = Student(name=application.applicant_name.strip(), date_of_birth=application.date_of_birth)
     db.add(student)
     db.flush()
     application.student_id = student.id
@@ -2298,7 +2312,7 @@ def list_employees(q: str = "", offset: int = 0, limit: int = 100, current_user:
     if q.strip():
         pattern = f"%{q.strip()}%"; statement = statement.where(or_(Employee.name.ilike(pattern), Employee.email.ilike(pattern), Employee.designation.ilike(pattern)))
     rows = db.scalars(statement.order_by(Employee.id).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
-    return [EmployeeResponse(id=e.id, name=e.name, email=e.email, designation=e.designation, salary_cents=e.salary_cents, status=e.status) for e in rows]
+    return [EmployeeResponse(id=e.id, name=e.name, email=e.email, designation=e.designation, phone=e.phone, join_date=e.join_date, salary_cents=e.salary_cents, status=e.status) for e in rows]
 
 
 @app.post("/api/hr/employees", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
@@ -2310,12 +2324,14 @@ def create_employee(payload: EmployeeCreateRequest, current_user: User = Depends
         name=payload.name.strip(),
         email=(payload.email or "").strip() or None,
         designation=(payload.designation or "").strip() or None,
+        phone=(payload.phone or "").strip() or None,
+        join_date=payload.join_date,
         salary_cents=payload.salary_cents,
     )
     db.add(employee)
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
 
 
 @app.patch("/api/hr/employees/{employee_id}", response_model=EmployeeResponse)
@@ -2328,10 +2344,12 @@ def update_employee(employee_id: int, payload: EmployeeCreateRequest, current_us
     employee.name = payload.name.strip()
     employee.email = (payload.email or "").strip() or None
     employee.designation = (payload.designation or "").strip() or None
+    employee.phone = (payload.phone or "").strip() or None
+    employee.join_date = payload.join_date
     employee.salary_cents = payload.salary_cents
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
 
 
 @app.post("/api/hr/employees/{employee_id}/status", response_model=EmployeeResponse)
@@ -2702,7 +2720,7 @@ def student_report_card(student_id: int, current_user: User = Depends(get_curren
     invoices = db.scalars(select(Invoice).where(Invoice.student_id == student.id, Invoice.voided.is_(False))).all()
     paid = _paid_cents_map(db, current_user.org_id or 0)
     attendance = db.execute(select(AttendanceRecord.status, func.count(AttendanceRecord.id)).where(AttendanceRecord.org_id == current_user.org_id, AttendanceRecord.student_id == student.id).group_by(AttendanceRecord.status)).all()
-    return {"student_id": student.id, "student_name": student.name, "learning": [{"concept": concept.title, "chapter": chapter.title, "mastery": round(effective_mastery(record), 4)} for record, concept, chapter in records], "fees": {"outstanding_cents": sum(max(0, invoice.amount_cents - paid.get(invoice.id, 0)) for invoice in invoices)}, "attendance": {key: value for key, value in attendance}}
+    return {"student_id": student.id, "student_name": student.name, "profile": {"roll_number": student.roll_number, "section": student.section, "date_of_birth": student.date_of_birth, "guardian_name": student.guardian_name, "guardian_phone": student.guardian_phone}, "learning": [{"concept": concept.title, "chapter": chapter.title, "mastery": round(effective_mastery(record), 4)} for record, concept, chapter in records], "fees": {"outstanding_cents": sum(max(0, invoice.amount_cents - paid.get(invoice.id, 0)) for invoice in invoices)}, "attendance": {key: value for key, value in attendance}}
 
 
 @app.get("/api/attendance/classrooms/{classroom_id}")
