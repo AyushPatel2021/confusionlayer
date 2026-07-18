@@ -69,6 +69,7 @@ from app.models import (
     GuardianLink,
     Invitation,
     Invoice,
+    InvoiceLineItem,
     MasteryHistory,
     MasteryRecord,
     MisconceptionTaxonomy,
@@ -582,6 +583,16 @@ class InvoiceCreateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     student_id: int | None = None
     due_date: date | None = None
+    line_items: list["InvoiceLineItemRequest"] = Field(default_factory=list, max_length=25)
+
+
+class InvoiceLineItemRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=160)
+    amount_cents: int = Field(ge=0)
+
+
+class InvoiceLineItemResponse(InvoiceLineItemRequest):
+    id: int
 
 
 class PaymentCreateRequest(BaseModel):
@@ -600,6 +611,7 @@ class InvoiceResponse(BaseModel):
     status: str
     voided: bool
     due_date: date | None
+    line_items: list[InvoiceLineItemResponse]
     created_at: datetime
 
 
@@ -2209,7 +2221,7 @@ def _invoice_status(amount_cents: int, paid_cents: int, voided: bool) -> str:
     return "unpaid"
 
 
-def _invoice_response(invoice: Invoice, paid_cents: int) -> InvoiceResponse:
+def _invoice_response(db: Session, invoice: Invoice, paid_cents: int) -> InvoiceResponse:
     return InvoiceResponse(
         id=invoice.id,
         student_id=invoice.student_id,
@@ -2220,6 +2232,7 @@ def _invoice_response(invoice: Invoice, paid_cents: int) -> InvoiceResponse:
         status=_invoice_status(invoice.amount_cents, paid_cents, invoice.voided),
         voided=invoice.voided,
         due_date=invoice.due_date,
+        line_items=[InvoiceLineItemResponse(id=item.id, description=item.description, amount_cents=item.amount_cents) for item in db.scalars(select(InvoiceLineItem).where(InvoiceLineItem.invoice_id == invoice.id).order_by(InvoiceLineItem.id)).all()],
         created_at=invoice.created_at,
     )
 
@@ -2267,7 +2280,7 @@ def list_invoices(q: str = "", offset: int = 0, limit: int = 100, current_user: 
     if q.strip(): statement = statement.where(Invoice.recipient_name.ilike(f"%{q.strip()}%"))
     invoices = db.scalars(statement.order_by(Invoice.id.desc()).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
     paid = _paid_cents_map(db, current_user.org_id)
-    return [_invoice_response(inv, paid.get(inv.id, 0)) for inv in invoices]
+    return [_invoice_response(db, inv, paid.get(inv.id, 0)) for inv in invoices]
 
 
 @app.post("/api/fees/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
@@ -2276,6 +2289,9 @@ def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(g
     _require_module(db, current_user, "accounting")
     if payload.student_id is not None:
         _org_student(db, current_user.org_id or 0, payload.student_id)
+    line_total = sum(item.amount_cents for item in payload.line_items)
+    if payload.line_items and line_total != payload.amount_cents:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invoice total must equal the sum of its line items")
     invoice = Invoice(
         org_id=current_user.org_id,
         student_id=payload.student_id,
@@ -2285,9 +2301,12 @@ def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(g
         due_date=payload.due_date,
     )
     db.add(invoice)
+    db.flush()
+    for item in payload.line_items:
+        db.add(InvoiceLineItem(invoice_id=invoice.id, description=item.description.strip(), amount_cents=item.amount_cents))
     db.commit()
     db.refresh(invoice)
-    return _invoice_response(invoice, 0)
+    return _invoice_response(db, invoice, 0)
 
 
 @app.patch("/api/fees/invoices/{invoice_id}", response_model=InvoiceResponse)
@@ -2297,14 +2316,21 @@ def update_invoice(invoice_id: int, payload: InvoiceCreateRequest, current_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only unpaid active invoices can be edited")
     if payload.student_id is not None:
         _org_student(db, current_user.org_id or 0, payload.student_id)
+    line_total = sum(item.amount_cents for item in payload.line_items)
+    if payload.line_items and line_total != payload.amount_cents:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invoice total must equal the sum of its line items")
     invoice.student_id = payload.student_id
     invoice.recipient_name = payload.recipient_name.strip()
     invoice.description = (payload.description or "").strip() or None
     invoice.amount_cents = payload.amount_cents
     invoice.due_date = payload.due_date
+    for item in db.scalars(select(InvoiceLineItem).where(InvoiceLineItem.invoice_id == invoice.id)).all():
+        db.delete(item)
+    for item in payload.line_items:
+        db.add(InvoiceLineItem(invoice_id=invoice.id, description=item.description.strip(), amount_cents=item.amount_cents))
     db.commit()
     db.refresh(invoice)
-    return _invoice_response(invoice, 0)
+    return _invoice_response(db, invoice, 0)
 
 
 @app.post("/api/fees/invoices/{invoice_id}/payments", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
@@ -2315,7 +2341,7 @@ def record_payment(invoice_id: int, payload: PaymentCreateRequest, current_user:
     db.add(Payment(org_id=invoice.org_id, invoice_id=invoice.id, amount_cents=payload.amount_cents, method=payload.method, note=payload.note))
     db.commit()
     paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
-    return _invoice_response(invoice, int(paid))
+    return _invoice_response(db, invoice, int(paid))
 
 
 @app.post("/api/fees/invoices/{invoice_id}/void", response_model=InvoiceResponse)
@@ -2324,7 +2350,7 @@ def void_invoice(invoice_id: int, current_user: User = Depends(get_current_user)
     invoice.voided = True
     db.commit()
     paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
-    return _invoice_response(invoice, int(paid))
+    return _invoice_response(db, invoice, int(paid))
 
 
 @app.get("/api/fees/summary", response_model=FeesSummaryResponse)

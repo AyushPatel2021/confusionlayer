@@ -460,6 +460,17 @@ class Invoice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class InvoiceLineItem(Base):
+    __tablename__ = "invoice_line_items"
+    __table_args__ = (CheckConstraint("amount_cents >= 0", name="ck_invoice_line_item_amount"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
+    description: Mapped[str] = mapped_column(String(160), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Payment(Base):
     __tablename__ = "payments"
     __table_args__ = (CheckConstraint("amount_cents > 0", name="ck_payment_amount"),)

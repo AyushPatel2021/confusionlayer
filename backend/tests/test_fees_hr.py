@@ -17,6 +17,7 @@ from app.main import (
     EmployeeCreateRequest,
     FeeStructureCreateRequest,
     InvoiceCreateRequest,
+    InvoiceLineItemRequest,
     PaymentCreateRequest,
     PayrollRunCreateRequest,
     create_employee,
@@ -60,6 +61,28 @@ class FeesHrTest(TestCase):
         self.assertEqual(after_partial.paid_cents, 4000)
         after_full = record_payment(inv.id, PaymentCreateRequest(amount_cents=6000), current_user=self.owner, db=self.db)
         self.assertEqual(after_full.status, "paid")
+
+    def test_invoice_line_items_are_persisted_and_totalled(self) -> None:
+        invoice = create_invoice(
+            InvoiceCreateRequest(
+                recipient_name="Asha",
+                amount_cents=12500,
+                line_items=[
+                    InvoiceLineItemRequest(description="Tuition", amount_cents=10000),
+                    InvoiceLineItemRequest(description="Lab fee", amount_cents=2500),
+                ],
+            ),
+            current_user=self.owner,
+            db=self.db,
+        )
+        self.assertEqual([(item.description, item.amount_cents) for item in invoice.line_items], [("Tuition", 10000), ("Lab fee", 2500)])
+        with self.assertRaises(HTTPException) as exc:
+            create_invoice(
+                InvoiceCreateRequest(recipient_name="Asha", amount_cents=10000, line_items=[InvoiceLineItemRequest(description="Tuition", amount_cents=9000)]),
+                current_user=self.owner,
+                db=self.db,
+            )
+        self.assertEqual(exc.exception.status_code, 422)
 
     def test_void_blocks_payment(self) -> None:
         inv = create_invoice(InvoiceCreateRequest(recipient_name="X", amount_cents=5000), current_user=self.owner, db=self.db)

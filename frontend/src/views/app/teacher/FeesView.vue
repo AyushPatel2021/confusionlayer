@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
@@ -9,8 +9,11 @@ import { useSessionStore, type Invoice } from "../../../stores/session";
 
 const session = useSessionStore();
 const showForm = ref(false);
-const form = ref({ recipient_name: "", student_id: null as number | null, amount: "", description: "" });
+type DraftLineItem = { description: string; amount: string };
+const emptyForm = () => ({ recipient_name: "", student_id: null as number | null, line_items: [{ description: "", amount: "" }] as DraftLineItem[] });
+const form = ref(emptyForm());
 const editingId = ref<number | null>(null);
+const invoiceTotal = computed(() => form.value.line_items.reduce((total, item) => total + Math.round(parseFloat(item.amount || "0") * 100), 0));
 
 onMounted(async () => { await session.loadFees(); await session.loadStudentOptions(); });
 
@@ -21,18 +24,21 @@ function statusTone(s: string) {
 }
 
 async function submit() {
-  const amount_cents = Math.round(parseFloat(form.value.amount || "0") * 100);
+  const line_items = form.value.line_items.filter((item) => item.description.trim()).map((item) => ({ description: item.description.trim(), amount_cents: Math.round(parseFloat(item.amount || "0") * 100) }));
+  const amount_cents = invoiceTotal.value;
   const saved = editingId.value
-    ? await session.updateInvoice(editingId.value, { recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, description: form.value.description || undefined })
-    : await session.createInvoice({ recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, description: form.value.description || undefined });
+    ? await session.updateInvoice(editingId.value, { recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, line_items })
+    : await session.createInvoice({ recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, line_items });
   if (saved) {
-    form.value = { recipient_name: "", student_id: null, amount: "", description: "" };
+    form.value = emptyForm();
     editingId.value = null;
     showForm.value = false;
   }
 }
-function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient_name: inv.recipient_name, student_id: inv.student_id, amount: String(inv.amount_cents / 100), description: inv.description || "" }; showForm.value = true; }
+function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient_name: inv.recipient_name, student_id: inv.student_id, line_items: inv.line_items.length ? inv.line_items.map((item) => ({ description: item.description, amount: String(item.amount_cents / 100) })) : [{ description: inv.description || "Invoice", amount: String(inv.amount_cents / 100) }] }; showForm.value = true; }
 function selectStudent() { const student = session.studentOptions.find((item) => item.id === form.value.student_id); if (student) form.value.recipient_name = student.name; }
+function addLineItem() { form.value.line_items.push({ description: "", amount: "" }); }
+function removeLineItem(index: number) { if (form.value.line_items.length > 1) form.value.line_items.splice(index, 1); }
 
 async function collect(inv: Invoice) {
   const remaining = inv.amount_cents - inv.paid_cents;
@@ -62,8 +68,7 @@ async function collect(inv: Invoice) {
     <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-4" @submit.prevent="submit">
       <label class="text-sm">Bill to<input v-model="form.recipient_name" class="s-input mt-1" required /></label>
       <label class="text-sm">Student<select v-model="form.student_id" class="s-input mt-1" @change="selectStudent"><option :value="null">External payer</option><option v-for="student in session.studentOptions" :key="student.id" :value="student.id">{{ student.name }}</option></select></label>
-      <label class="text-sm">Amount (₹)<input v-model="form.amount" type="number" min="0" step="1" class="s-input mt-1" required /></label>
-      <label class="text-sm">Description<input v-model="form.description" class="s-input mt-1" /></label>
+      <div class="sm:col-span-2"><p class="text-sm">Invoice lines</p><div v-for="(item, index) in form.line_items" :key="index" class="mt-1 flex gap-2"><input v-model="item.description" class="s-input flex-1" placeholder="Description" required /><input v-model="item.amount" type="number" min="0" step="1" class="s-input w-28" placeholder="₹" required /><SButton type="button" variant="ghost" :disabled="form.line_items.length === 1" @click="removeLineItem(index)">Remove</SButton></div><div class="mt-2 flex items-center justify-between"><SButton type="button" variant="secondary" @click="addLineItem">Add line</SButton><span class="text-sm font-semibold text-ink-900">Total {{ money(invoiceTotal) }}</span></div></div>
       <div class="sm:col-span-4"><SButton type="submit" variant="primary" :disabled="!form.recipient_name.trim() || session.loading === 'create-invoice'">{{ editingId ? "Save invoice" : "Create invoice" }}</SButton></div>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>

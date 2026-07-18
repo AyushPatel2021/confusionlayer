@@ -292,6 +292,7 @@ export interface Invoice {
   status: string;
   voided: boolean;
   due_date: string | null;
+  line_items: Array<{ id: number; description: string; amount_cents: number }>;
   created_at: string;
 }
 
@@ -1259,7 +1260,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number }): Promise<boolean> {
+    async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number; line_items?: Array<{ description: string; amount_cents: number }> }): Promise<boolean> {
       this.loading = "create-invoice";
       this.error = "";
       try {
@@ -1273,7 +1274,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async updateInvoice(invoiceId: number, payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number }): Promise<boolean> {
+    async updateInvoice(invoiceId: number, payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number; line_items?: Array<{ description: string; amount_cents: number }> }): Promise<boolean> {
       this.loading = `invoice-${invoiceId}`;
       this.error = "";
       try { await api(`/api/fees/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
