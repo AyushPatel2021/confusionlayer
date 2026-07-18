@@ -382,6 +382,19 @@ class StudentInsightsResponse(BaseModel):
     weaknesses: list[StudentInsightConceptResponse]
 
 
+class ExamOutcomeItemResponse(BaseModel):
+    concept_id: int
+    title: str
+    chapter_title: str
+    risk: float
+    effective_mastery: float
+
+
+class ExamOutcomeResponse(BaseModel):
+    days_to_exam: int
+    outcomes: list[ExamOutcomeItemResponse]
+
+
 class SubjectCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     board: str = Field(default="CBSE", max_length=80)
@@ -1238,6 +1251,18 @@ def student_progress(
         ),
         concepts=concepts,
     )
+
+
+@app.get("/api/student/exam-outcome", response_model=ExamOutcomeResponse)
+def student_exam_outcome(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ExamOutcomeResponse:
+    if current_user.role != "student" or not current_user.student_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can view exam outcomes")
+    progress = student_progress(current_user=current_user, db=db)
+    mastery = {item.concept_id: item.effective_mastery for item in progress.concepts}
+    rows = db.execute(select(ForecastRecord, Concept, Chapter).join(Concept, ForecastRecord.concept_id == Concept.id).join(Chapter, Concept.chapter_id == Chapter.id).where(ForecastRecord.student_id == current_user.student_id)).all()
+    outcomes = sorted([ExamOutcomeItemResponse(concept_id=concept.id, title=concept.title, chapter_title=chapter.title, risk=forecast.predicted_difficulty, effective_mastery=mastery.get(concept.id, 0)) for forecast, concept, chapter in rows], key=lambda item: item.risk, reverse=True)[:5]
+    today = date.today(); exam = date(today.year if today.month < 3 else today.year + 1, 3, 1)
+    return ExamOutcomeResponse(days_to_exam=(exam - today).days, outcomes=outcomes)
 
 
 @app.get("/api/teacher/classrooms/{classroom_id}/students/{student_id}/insights", response_model=StudentInsightsResponse)

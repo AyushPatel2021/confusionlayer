@@ -190,6 +190,7 @@ export interface StudentInsights {
   strengths: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
   weaknesses: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
 }
+export interface ExamOutcome { days_to_exam: number; outcomes: Array<{ concept_id: number; title: string; chapter_title: string; risk: number; effective_mastery: number }>; }
 
 export interface CurriculumSubject {
   id: number;
@@ -382,6 +383,7 @@ export const useSessionStore = defineStore("session", {
     selfStartTutorial: null as Tutorial | null,
     progress: null as StudentProgress | null,
     studentInsights: null as StudentInsights | null,
+    examOutcome: null as ExamOutcome | null,
     curriculumSubjects: [] as CurriculumSubject[],
     curriculumTree: null as CurriculumTree | null,
     importDraft: null as DraftChapter[] | null,
@@ -908,6 +910,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadExamOutcome() { this.loading = "exam-outcome"; this.error = ""; try { this.examOutcome = await api<ExamOutcome>("/api/student/exam-outcome"); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
     async loadCurriculumSubjects() {
       this.loading = "curriculum";
       this.error = "";

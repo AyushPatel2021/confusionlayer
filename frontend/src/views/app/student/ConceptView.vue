@@ -25,6 +25,7 @@ const concept = computed(() => session.selectedConcept);
 
 function load() {
   const id = Number(route.params.conceptId);
+  if (route.query.tool === "teach_back") session.activeTool = "teach_back";
   if (id) void session.loadConceptById(id);
 }
 onMounted(load);

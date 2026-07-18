@@ -34,6 +34,7 @@ const links = computed(() => {
         { to: "/app/explore", label: "Explore", icon: Compass },
         { to: "/app/progress", label: "My progress", icon: TrendingUp },
         { to: "/app/map", label: "Confusion map", icon: AlertTriangle },
+        { to: "/app/exam-outcome", label: "Exam outlook", icon: ClipboardCheck },
       ] },
     ];
   }

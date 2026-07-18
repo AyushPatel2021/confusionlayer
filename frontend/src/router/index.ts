@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
       { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue"), meta: { title: "Explore", roles: ["student"] } },
       { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue"), meta: { title: "My progress", roles: ["student"] } },
       { path: "map", name: "confusion-map", component: () => import("../views/app/student/ConfusionMapView.vue"), meta: { title: "Confusion map", roles: ["student"] } },
+      { path: "exam-outcome", name: "exam-outcome", component: () => import("../views/app/student/ExamOutcomeView.vue"), meta: { title: "Exam outlook", roles: ["student"] } },
       // Parent
       { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue"), meta: { title: "Family", roles: ["parent"] } },
       // Teacher
