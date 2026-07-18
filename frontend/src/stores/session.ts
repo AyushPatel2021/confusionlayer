@@ -408,6 +408,7 @@ export const useSessionStore = defineStore("session", {
     selfStartTutorial: null as Tutorial | null,
     progress: null as StudentProgress | null,
     confusionMap: null as ConfusionMap | null,
+    teacherConfusionMap: null as ConfusionMap | null,
     studentInsights: null as StudentInsights | null,
     examOutcome: null as ExamOutcome | null,
     curriculumSubjects: [] as CurriculumSubject[],
@@ -979,6 +980,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadTeacherConfusionMap(classroomId: number, studentId: number) { try { this.teacherConfusionMap = await api<ConfusionMap>(`/api/teacher/classrooms/${classroomId}/students/${studentId}/confusion-map`); } catch (error) { this.error = messageFromError(error); } },
     async loadExamOutcome() { this.loading = "exam-outcome"; this.error = ""; try { this.examOutcome = await api<ExamOutcome>("/api/student/exam-outcome"); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
     async loadCurriculumSubjects() {
       this.loading = "curriculum";

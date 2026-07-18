@@ -1457,6 +1457,18 @@ def student_insights(
     )
 
 
+@app.get("/api/teacher/classrooms/{classroom_id}/students/{student_id}/confusion-map", response_model=ConfusionMapResponse)
+def teacher_student_confusion_map(classroom_id: int, student_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ConfusionMapResponse:
+    classroom = _require_teacher_classroom(db, current_user, classroom_id, "view the learner confusion map")
+    if not db.scalar(select(ClassroomStudent.id).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student_id)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student is not enrolled in this classroom")
+    rows = db.execute(select(MasteryRecord, Concept, Chapter).join(Concept, Concept.id == MasteryRecord.concept_id).join(Chapter, Chapter.id == Concept.chapter_id).where(MasteryRecord.student_id == student_id, Chapter.subject_id == classroom.subject_id).order_by(Chapter.order, Concept.order)).all()
+    risks = {row.concept_id: row.predicted_difficulty for row in db.scalars(select(ForecastRecord).where(ForecastRecord.student_id == student_id)).all()}
+    node_ids = {record.concept_id for record, _concept, _chapter in rows}
+    edges = db.scalars(select(ConceptEdge).where(ConceptEdge.concept_id.in_(node_ids), ConceptEdge.prerequisite_concept_id.in_(node_ids))).all() if node_ids else []
+    return ConfusionMapResponse(nodes=[ConfusionMapNodeResponse(concept_id=record.concept_id, title=concept.title, chapter_title=chapter.title, effective_mastery=effective_mastery(record.computed_mastery, days_since_review(record.last_reviewed_at)), forecast_risk=risks.get(record.concept_id)) for record, concept, chapter in rows], edges=[ConfusionMapEdgeResponse(prerequisite_concept_id=edge.prerequisite_concept_id, concept_id=edge.concept_id) for edge in edges])
+
+
 @dataclass
 class CurrentContext:
     user: User
