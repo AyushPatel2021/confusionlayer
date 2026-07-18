@@ -1311,7 +1311,7 @@ def _cross_org(user: User, classroom: Classroom) -> bool:
 
 
 CURRICULUM_EDITOR_ROLES = {"owner", "school_admin", "teacher", "admin"}
-MAX_IMPORT_BYTES = 15 * 1024 * 1024
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
 
 
 def _require_curriculum_editor(user: User) -> None:
@@ -1473,7 +1473,7 @@ def import_curriculum_pdf(file: UploadFile = File(...), current_user: User = Dep
     if not contents:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
     if len(contents) > MAX_IMPORT_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 15MB)")
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 5MB)")
     try:
         drafts = extract_structure(contents)
     except Exception as exc:  # noqa: BLE001 - surface a clean error, never persist the raw file

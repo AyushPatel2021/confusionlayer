@@ -987,6 +987,11 @@ export const useSessionStore = defineStore("session", {
       this.loading = "import";
       this.error = "";
       this.importDraft = null;
+      if (file.size > 5 * 1024 * 1024) {
+        this.error = "Choose a PDF smaller than 5MB.";
+        this.loading = "";
+        return false;
+      }
       try {
         const form = new FormData();
         form.append("file", file);

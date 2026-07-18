@@ -47,7 +47,8 @@ async function commit() {
 
     <div class="rounded-lg border border-dashed border-hairline bg-surface p-8 text-center">
       <input ref="fileInput" type="file" accept="application/pdf" class="hidden" @change="onFile" />
-      <p class="text-sm text-ink-600">Upload a PDF (syllabus, contents page, chapter list).</p>
+      <p class="text-sm text-ink-600">Upload a PDF up to 5MB (syllabus, contents page, chapter list).</p>
+      <a class="mt-2 inline-block text-sm font-semibold text-primary-700 hover:underline" href="https://ncert.nic.in/textbook.php?ln=en" target="_blank" rel="noopener noreferrer">Get an official NCERT syllabus or textbook PDF</a>
       <SButton class="mt-4" variant="primary" :disabled="session.loading === 'import'" @click="fileInput?.click()">
         {{ session.loading === "import" ? "Reading..." : "Choose PDF" }}
       </SButton>
