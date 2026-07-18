@@ -10,6 +10,7 @@ import { useSessionStore, type Invoice } from "../../../stores/session";
 const session = useSessionStore();
 const showForm = ref(false);
 const form = ref({ recipient_name: "", amount: "", description: "" });
+const editingId = ref<number | null>(null);
 
 onMounted(() => session.loadFees());
 
@@ -21,11 +22,16 @@ function statusTone(s: string) {
 
 async function submit() {
   const amount_cents = Math.round(parseFloat(form.value.amount || "0") * 100);
-  if (await session.createInvoice({ recipient_name: form.value.recipient_name, amount_cents, description: form.value.description || undefined })) {
+  const saved = editingId.value
+    ? await session.updateInvoice(editingId.value, { recipient_name: form.value.recipient_name, amount_cents, description: form.value.description || undefined })
+    : await session.createInvoice({ recipient_name: form.value.recipient_name, amount_cents, description: form.value.description || undefined });
+  if (saved) {
     form.value = { recipient_name: "", amount: "", description: "" };
+    editingId.value = null;
     showForm.value = false;
   }
 }
+function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient_name: inv.recipient_name, amount: String(inv.amount_cents / 100), description: inv.description || "" }; showForm.value = true; }
 
 async function collect(inv: Invoice) {
   const remaining = inv.amount_cents - inv.paid_cents;
@@ -55,7 +61,7 @@ async function collect(inv: Invoice) {
       <label class="text-sm">Bill to<input v-model="form.recipient_name" class="s-input mt-1" required /></label>
       <label class="text-sm">Amount (₹)<input v-model="form.amount" type="number" min="0" step="1" class="s-input mt-1" required /></label>
       <label class="text-sm">Description<input v-model="form.description" class="s-input mt-1" /></label>
-      <div class="sm:col-span-3"><SButton type="submit" variant="primary" :disabled="!form.recipient_name.trim() || session.loading === 'create-invoice'">Create invoice</SButton></div>
+      <div class="sm:col-span-3"><SButton type="submit" variant="primary" :disabled="!form.recipient_name.trim() || session.loading === 'create-invoice'">{{ editingId ? "Save invoice" : "Create invoice" }}</SButton></div>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 
@@ -76,6 +82,7 @@ async function collect(inv: Invoice) {
             <td class="px-4 py-3"><SBadge :tone="statusTone(inv.status)">{{ inv.status }}</SBadge></td>
             <td class="px-4 py-3 text-right">
               <template v-if="!inv.voided && inv.status !== 'paid'">
+                <SButton v-if="inv.status === 'unpaid'" variant="ghost" @click="edit(inv)">Edit</SButton>
                 <SButton variant="secondary" :disabled="session.loading === `invoice-${inv.id}`" @click="collect(inv)">Record payment</SButton>
                 <SButton variant="ghost" :disabled="session.loading === `invoice-${inv.id}`" @click="session.voidInvoice(inv.id)">Void</SButton>
               </template>

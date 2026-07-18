@@ -1181,6 +1181,13 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async updateInvoice(invoiceId: number, payload: { recipient_name: string; amount_cents: number; description?: string }): Promise<boolean> {
+      this.loading = `invoice-${invoiceId}`;
+      this.error = "";
+      try { await api(`/api/fees/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
+    },
     async recordPayment(invoiceId: number, amountCents: number, method?: string) {
       this.loading = `invoice-${invoiceId}`;
       this.error = "";
@@ -1229,6 +1236,13 @@ export const useSessionStore = defineStore("session", {
       } finally {
         this.loading = "";
       }
+    },
+    async updateEmployee(employeeId: number, payload: { name: string; email?: string; designation?: string; salary_cents: number }): Promise<boolean> {
+      this.loading = `employee-${employeeId}`;
+      this.error = "";
+      try { await api(`/api/hr/employees/${employeeId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadEmployees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
     },
     async loadPayrollRuns() {
       this.loading = "payroll";
