@@ -13,8 +13,8 @@ const routes: RouteRecordRaw[] = [
       { path: "students", name: "students", component: () => import("../views/marketing/StudentsView.vue"), meta: { title: "Students" } },
       { path: "pricing", name: "pricing", component: () => import("../views/marketing/PricingView.vue"), meta: { title: "Pricing" } },
       { path: "about", name: "about", component: () => import("../views/marketing/AboutView.vue"), meta: { title: "About" } },
-      { path: "login", name: "login", component: () => import("../views/auth/LoginView.vue"), meta: { title: "Sign in" } },
-      { path: "signup", name: "signup", component: () => import("../views/auth/SignupView.vue"), meta: { title: "Get started" } },
+      { path: "login", name: "login", component: () => import("../views/auth/LoginView.vue"), meta: { title: "Sign in", guestOnly: true } },
+      { path: "signup", name: "signup", component: () => import("../views/auth/SignupView.vue"), meta: { title: "Get started", guestOnly: true } },
       { path: "forgot-password", name: "forgot-password", component: () => import("../views/auth/ForgotPasswordView.vue"), meta: { title: "Reset password" } },
       { path: "reset-password/:token", name: "reset-password", component: () => import("../views/auth/ResetPasswordView.vue"), meta: { title: "Set password" } },
       { path: "accept-invite/:token", name: "accept-invite", component: () => import("../views/auth/AcceptInviteView.vue"), meta: { title: "Accept invite" } },
@@ -70,7 +70,8 @@ export const router = createRouter({
 // so flipping meta.requiresAuth on will start gating without further changes.
 router.beforeEach(async (to) => {
   const session = useSessionStore();
-  if (to.meta.requiresAuth) await session.restore();
+  if (to.meta.requiresAuth || to.meta.guestOnly) await session.restore();
+  if (to.meta.guestOnly && session.isAuthenticated) return session.roleHome;
   if (to.meta.requiresAuth && !session.isAuthenticated) {
     return { name: "login", query: { redirect: to.fullPath } };
   }

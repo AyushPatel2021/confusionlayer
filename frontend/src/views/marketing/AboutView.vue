@@ -31,7 +31,7 @@ const principles = [
     <section class="mx-auto max-w-content px-6 py-12">
       <ol class="max-w-3xl border-l border-hairline pl-8">
         <li v-for="(beat, i) in beats" :key="beat.title" v-reveal class="relative pb-10 last:pb-0" :style="{ transitionDelay: `${i * 60}ms` }">
-          <span class="absolute -left-[37px] top-1 h-4 w-4 rounded-full border-2 border-primary-600 bg-paper" aria-hidden="true" />
+          <span class="absolute -left-[41px] top-1 h-4 w-4 rounded-full border-2 border-primary-600 bg-paper" aria-hidden="true" />
           <h3 class="font-display text-xl font-semibold text-ink-900">{{ beat.title }}</h3>
           <p class="mt-2 max-w-reading text-base leading-8 text-ink-700">{{ beat.body }}</p>
         </li>
