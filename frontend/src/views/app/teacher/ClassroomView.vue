@@ -40,7 +40,7 @@ onMounted(() => {
         class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-hairline bg-surface p-5"
       >
         <div>
-          <p class="text-xs font-medium text-ink-500">Chapter {{ chapter.order }} · {{ chapter.concepts.length }} concepts</p>
+          <p class="text-xs font-medium text-ink-500">Chapter {{ chapter.order }} | {{ chapter.concepts.length }} concepts</p>
           <h2 class="font-display text-lg font-semibold text-ink-900">{{ chapter.title }}</h2>
         </div>
         <div class="flex items-center gap-3">
@@ -51,7 +51,7 @@ onMounted(() => {
             :disabled="session.loading === `unlock-${chapter.id}`"
             @click="session.unlockChapter(chapter.id)"
           >
-            {{ session.loading === `unlock-${chapter.id}` ? "Unlocking…" : "Unlock" }}
+            {{ session.loading === `unlock-${chapter.id}` ? "Unlocking..." : "Unlock" }}
           </SButton>
         </div>
       </section>

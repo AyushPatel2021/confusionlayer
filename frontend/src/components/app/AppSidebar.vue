@@ -6,6 +6,8 @@ import { useSessionStore } from "../../stores/session";
 
 const session = useSessionStore();
 
+defineProps<{ compact?: boolean }>();
+
 const links = computed(() => {
   if (session.isStudent) {
     return [
@@ -45,8 +47,10 @@ const links = computed(() => {
       :to="link.to"
       class="s-focus rounded-md px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-primary-50 hover:text-primary-600"
       active-class="bg-primary-50 text-primary-600"
+      :title="compact ? link.label : undefined"
     >
-      {{ link.label }}
+      <span v-if="compact" class="block text-center font-mono text-xs">{{ link.label.slice(0, 2).toUpperCase() }}</span>
+      <span v-else>{{ link.label }}</span>
     </RouterLink>
   </nav>
 </template>

@@ -39,7 +39,7 @@ async function submit() {
           {{ session.error }}
         </p>
         <SButton type="submit" variant="primary" block :disabled="session.loading === 'reset'">
-          {{ session.loading === "reset" ? "Saving…" : "Reset password" }}
+          {{ session.loading === "reset" ? "Saving..." : "Reset password" }}
         </SButton>
       </form>
 

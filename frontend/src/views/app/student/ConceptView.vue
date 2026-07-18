@@ -56,7 +56,7 @@ async function submitTeachBack() {
 
 <template>
   <div class="space-y-6">
-    <RouterLink to="/app/learn" class="text-sm font-medium text-primary-600 hover:text-primary-500">← Syllabus</RouterLink>
+    <RouterLink to="/app/learn" class="text-sm font-medium text-primary-600 hover:text-primary-500">Back to syllabus</RouterLink>
 
     <SLoadingState v-if="session.loading === `concept-${route.params.conceptId}` && !concept" :rows="2" />
     <SErrorState v-else-if="!concept && session.error" :message="session.error" @retry="load" />
@@ -66,7 +66,7 @@ async function submitTeachBack() {
         <p class="s-eyebrow">{{ concept.chapter_title }}</p>
         <h1 class="mt-2 font-display text-3xl font-semibold text-ink-900">{{ concept.title }}</h1>
         <p class="mt-2 text-sm text-ink-500">
-          {{ concept.subject.board }} Class {{ concept.subject.class_level }} · {{ concept.subject.name }}
+          {{ concept.subject.board }} Class {{ concept.subject.class_level }} | {{ concept.subject.name }}
         </p>
       </div>
 
@@ -101,7 +101,7 @@ async function submitTeachBack() {
         <div class="flex items-center justify-between gap-3">
           <p class="s-eyebrow">Tutorial generator</p>
           <SButton variant="primary" :disabled="!!session.loading" @click="session.generateTutorial()">
-            {{ session.loading === "tutorial" ? "Generating…" : "Generate tutorial" }}
+            {{ session.loading === "tutorial" ? "Generating..." : "Generate tutorial" }}
           </SButton>
         </div>
         <div v-if="session.tutorial" class="space-y-4">
@@ -110,7 +110,7 @@ async function submitTeachBack() {
             <p class="mt-3 whitespace-pre-line text-base leading-8 text-ink-800">{{ session.tutorial.explanation }}</p>
           </div>
           <div v-if="session.tutorial.analogy" class="rounded-lg border border-accent-600/30 bg-accent-100/40 p-5">
-            <p class="s-eyebrow">Think of it like…</p>
+            <p class="s-eyebrow">Think of it like...</p>
             <p class="mt-3 whitespace-pre-line text-base leading-7 text-ink-800">{{ session.tutorial.analogy }}</p>
           </div>
           <div class="grid gap-4 xl:grid-cols-2">
@@ -144,7 +144,7 @@ async function submitTeachBack() {
             :class="m.role === 'student' ? 'ml-auto bg-primary-600 text-white' : 'mr-auto border border-hairline bg-paper text-ink-800'"
           >
             <p class="text-[11px] font-semibold uppercase tracking-wide" :class="m.role === 'student' ? 'text-white/70' : 'text-accent-600'">
-              {{ m.role }}<span v-if="m.response_type"> · {{ m.response_type }}</span>
+              {{ m.role }}<span v-if="m.response_type"> | {{ m.response_type }}</span>
             </p>
             <p class="mt-1 whitespace-pre-line">{{ m.content }}</p>
           </div>
@@ -152,7 +152,7 @@ async function submitTeachBack() {
         <form v-if="session.isStudent" class="flex flex-col gap-3 md:flex-row" @submit.prevent="sendDoubt">
           <input v-model="doubtText" class="s-input" placeholder="Ask a doubt about this concept" :disabled="!!session.loading" />
           <SButton type="submit" variant="primary" :disabled="!!session.loading || !doubtText.trim()">
-            {{ session.loading === "doubt" ? "Sending…" : "Send" }}
+            {{ session.loading === "doubt" ? "Sending..." : "Send" }}
           </SButton>
         </form>
         <p v-else class="text-sm text-ink-500">Sign in as a student to use doubt chat.</p>
@@ -175,7 +175,7 @@ async function submitTeachBack() {
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-ink-500">{{ session.isStudent ? "Answer as yourself" : "Students only" }}</p>
             <SButton type="submit" variant="primary" :disabled="!!session.loading || !quizAnswer.trim() || !session.isStudent">
-              {{ session.loading === "quiz" ? "Grading…" : "Grade answer" }}
+              {{ session.loading === "quiz" ? "Grading..." : "Grade answer" }}
             </SButton>
           </div>
         </form>
@@ -203,7 +203,7 @@ async function submitTeachBack() {
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-ink-500">{{ session.isStudent ? "Explain as yourself" : "Students only" }}</p>
             <SButton type="submit" variant="primary" :disabled="!!session.loading || !teachBackText.trim() || !session.isStudent">
-              {{ session.loading === "teach-back" ? "Grading…" : "Grade teach-back" }}
+              {{ session.loading === "teach-back" ? "Grading..." : "Grade teach-back" }}
             </SButton>
           </div>
         </form>

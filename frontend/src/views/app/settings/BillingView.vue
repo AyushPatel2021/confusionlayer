@@ -24,7 +24,7 @@ function limitLabel(key: string, value: number) {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Settings" title="Plan & billing" subtitle="Every plan is free right now — switching won't charge you." />
+    <SPageHeader eyebrow="Settings" title="Plan & billing" subtitle="Every plan is free right now. Switching won't charge you." />
 
     <SLoadingState v-if="session.loading === 'org' && !org" :rows="2" />
 
@@ -78,7 +78,7 @@ function limitLabel(key: string, value: number) {
               :disabled="currentPlan === plan.code || session.loading === `plan-${plan.code}`"
               @click="session.changePlan(plan.code)"
             >
-              {{ currentPlan === plan.code ? "Current plan" : session.loading === `plan-${plan.code}` ? "Switching…" : "Switch to this plan" }}
+              {{ currentPlan === plan.code ? "Current plan" : session.loading === `plan-${plan.code}` ? "Switching..." : "Switch to this plan" }}
             </SButton>
           </div>
         </div>

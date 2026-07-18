@@ -15,16 +15,16 @@ async function submit() {
 
 <template>
   <div>
-    <p class="s-eyebrow">Explore · outside the syllabus</p>
+    <p class="s-eyebrow">Explore | outside the syllabus</p>
     <p class="mt-2 text-sm leading-6 text-ink-600">
-      Curious about something not yet unlocked? Generate a tutorial for any topic — pitched to your level. This is
+      Curious about something not yet unlocked? Generate a tutorial for any topic, pitched to your level. This is
       exploration only; it doesn't affect your class progress.
     </p>
 
     <form class="mt-5 flex flex-col gap-3 md:flex-row" @submit.prevent="submit">
       <input v-model="topic" class="s-input" placeholder="e.g. How do black holes form?" :disabled="!!session.loading" />
       <SButton type="submit" variant="primary" :disabled="!!session.loading || !topic.trim()">
-        {{ session.loading === "self-start" ? "Generating…" : "Generate" }}
+        {{ session.loading === "self-start" ? "Generating..." : "Generate" }}
       </SButton>
     </form>
 
@@ -36,7 +36,7 @@ async function submit() {
         <p class="mt-3 whitespace-pre-line text-base leading-8 text-ink-800">{{ session.selfStartTutorial.explanation }}</p>
       </div>
       <div v-if="session.selfStartTutorial.analogy" class="rounded-lg border border-accent-600/30 bg-accent-100/40 p-5">
-        <p class="s-eyebrow">Think of it like…</p>
+        <p class="s-eyebrow">Think of it like...</p>
         <p class="mt-3 whitespace-pre-line text-base leading-7 text-ink-800">{{ session.selfStartTutorial.analogy }}</p>
       </div>
       <div class="grid gap-4 xl:grid-cols-2">

@@ -9,15 +9,15 @@ const fill = ref(0);
 
 const beats = [
   { title: "The pattern every teacher knows", body: "A class stumbles on today's lesson because a prerequisite from three weeks ago quietly faded." },
-  { title: "The insight", body: "That fade is measurable. Decayed mastery of prerequisites predicts tomorrow's struggle — before a quiz reveals it." },
+  { title: "The insight", body: "That fade is measurable. Decayed mastery of prerequisites predicts tomorrow's struggle, before a quiz reveals it." },
   { title: "The engine", body: "So we built the Confusion Forecast Engine: deterministic graph math that briefs the teacher the night before." },
-  { title: "The rest of the school", body: "Then the boring-but-essential parts — admissions, fees, staff — so office and classroom share one source of truth." },
+  { title: "The rest of the school", body: "Then the boring-but-essential parts, admissions, fees, staff, so office and classroom share one source of truth." },
 ];
 
 const principles = [
   { title: "Teachers lead", body: "The AI never runs ahead of the lesson. Teachers decide what's unlocked." },
   { title: "Numbers are earned, not guessed", body: "Mastery and forecasts are deterministic formulas. The AI never grades itself." },
-  { title: "Privacy by threshold", body: "No misconception is surfaced unless 3+ students share it — never with a name." },
+  { title: "Privacy by threshold", body: "No misconception is surfaced unless 3+ students share it, never with a name." },
 ];
 
 function onScroll() {
@@ -45,7 +45,7 @@ onBeforeUnmount(() => {
     <section class="relative">
       <div class="dot-grid pointer-events-none absolute inset-0 opacity-50" aria-hidden="true" />
       <div class="relative mx-auto max-w-content px-6 pb-10 pt-16 lg:pt-24">
-        <p v-reveal class="s-eyebrow pulse-dot ml-4">Why we built this</p>
+        <p v-reveal class="s-eyebrow">Why we built this</p>
         <h1 v-reveal class="mt-5 max-w-4xl font-display text-4xl font-semibold leading-[1.05] text-ink-900 md:text-6xl">
           Confusion compounds. We wanted to catch it <Squiggle>earlier.</Squiggle>
         </h1>
@@ -70,7 +70,7 @@ onBeforeUnmount(() => {
     <section class="border-y border-hairline bg-ink-900 text-paper">
       <div v-reveal class="mx-auto max-w-content px-6 py-20">
         <p class="max-w-3xl font-display text-3xl leading-snug md:text-4xl">
-          “Spend five minutes recapping — instead of an hour re-teaching.”
+          “Spend five minutes recapping, instead of an hour re-teaching.”
         </p>
       </div>
     </section>

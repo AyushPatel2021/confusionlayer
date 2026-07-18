@@ -69,7 +69,7 @@ async function addConcept(chapterId: number) {
             >
               <span>
                 <span class="font-semibold text-ink-900">{{ s.name }}</span>
-                <span class="block text-xs text-ink-500">{{ s.board }} · Class {{ s.class_level }} · {{ s.chapter_count }} chapters</span>
+                <span class="block text-xs text-ink-500">{{ s.board }} | Class {{ s.class_level }} | {{ s.chapter_count }} chapters</span>
               </span>
               <SBadge v-if="s.shared" tone="neutral">shared</SBadge>
             </button>

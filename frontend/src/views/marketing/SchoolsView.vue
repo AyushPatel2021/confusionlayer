@@ -7,8 +7,8 @@ import Squiggle from "../../components/marketing/Squiggle.vue";
 import SButton from "../../components/ui/SButton.vue";
 
 const modules = [
-  { key: "admissions", tab: "Admissions", title: "Admissions that don't live in a spreadsheet", body: "Track applicants from enquiry to enrolled, then provision the student account in one click.", points: ["Applicant intake forms", "Review & status pipeline", "Accept → enrol → learning access"] },
-  { key: "fees", tab: "Fees", title: "Fees, invoices, and dues — per student", body: "Define fee structures once, generate invoices per term, and see who's paid at a glance.", points: ["Fee structures & items", "Invoices & receipts", "Dues and ledger view"] },
+  { key: "admissions", tab: "Admissions", title: "Admissions that don't live in a spreadsheet", body: "Track applicants from enquiry to enrolled, then provision the student account in one click.", points: ["Applicant intake forms", "Review & status pipeline", "Accept, enrol, learning access"] },
+  { key: "fees", tab: "Fees", title: "Fees, invoices, and dues, per student", body: "Define fee structures once, generate invoices per term, and see who's paid at a glance.", points: ["Fee structures & items", "Invoices & receipts", "Dues and ledger view"] },
   { key: "staff", tab: "Staff & payroll", title: "Your people, on the record", body: "Employee records, designations, and salary structures, with payroll runs when you need them.", points: ["Employee directory", "Designations & roles", "Salary structures & payslips"] },
   { key: "learning", tab: "Learning", title: "The engine that clears confusion", body: "Everything the classroom needs: tutoring, misconception diagnosis, and pre-lesson forecasts.", points: ["Teacher-gated AI tutoring", "Forecast & confusion briefs", "Mastery tracking"] },
 ];
@@ -17,8 +17,8 @@ const active = ref(modules[0]);
 const hierarchy = [
   { role: "Owner", note: "runs the org & subscription" },
   { role: "School Admin", note: "members, classes, settings" },
-  { role: "Accountant · HR · Teachers", note: "their own modules" },
-  { role: "Students · Parents", note: "learning & visibility" },
+  { role: "Accountant | HR | Teachers", note: "their own modules" },
+  { role: "Students | Parents", note: "learning & visibility" },
 ];
 </script>
 
@@ -27,17 +27,17 @@ const hierarchy = [
     <section class="relative">
       <div class="dot-grid pointer-events-none absolute inset-0 opacity-50" aria-hidden="true" />
       <div class="relative mx-auto max-w-content px-6 pb-14 pt-16 lg:pt-24">
-        <p v-reveal class="s-eyebrow pulse-dot ml-4">For schools</p>
+        <p v-reveal class="s-eyebrow">For schools</p>
         <h1 v-reveal class="mt-5 max-w-4xl font-display text-4xl font-semibold leading-[1.05] text-ink-900 md:text-6xl">
           The whole school, in <Squiggle>one hierarchy.</Squiggle>
         </h1>
         <p v-reveal class="mt-6 max-w-reading text-lg leading-8 text-ink-700">
-          Admissions, fees, staff, and the learning platform under a single roof and a single set of roles — so the
+          Admissions, fees, staff, and the learning platform under a single roof and a single set of roles, so the
           front office and the classroom finally run on the same system.
         </p>
         <div v-reveal class="mt-8">
           <RouterLink to="/signup?segment=school" class="nudge-host">
-            <SButton variant="primary">Start your school — free <span class="nudge">→</span></SButton>
+            <SButton variant="primary">Start your school free</SButton>
           </RouterLink>
         </div>
       </div>

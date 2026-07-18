@@ -97,7 +97,7 @@ function pct(v: number) {
           <li v-for="c in progress.concepts" :key="c.concept_id" class="rounded-md border border-hairline bg-surface p-3">
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-medium text-ink-800">{{ c.concept_title }}</span>
-              <span class="text-xs text-ink-500">{{ pct(c.effective_mastery) }}% now · {{ pct(c.current_mastery) }}% peak</span>
+              <span class="text-xs text-ink-500">{{ pct(c.effective_mastery) }}% now | {{ pct(c.current_mastery) }}% peak</span>
             </div>
             <div class="mt-2 h-2 w-full overflow-hidden rounded-sm bg-surface-sunken">
               <div class="h-full rounded-sm bg-primary-600" :style="{ width: `${pct(c.effective_mastery)}%` }" />

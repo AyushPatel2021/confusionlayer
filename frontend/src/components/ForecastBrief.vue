@@ -30,11 +30,11 @@ const p = (v: number) => Math.round(v * 100);
   <div>
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p class="s-eyebrow">Predictive · pre-lesson</p>
-        <p class="mt-1 text-sm text-ink-600">Which upcoming concepts the class will struggle with — before you teach them.</p>
+        <p class="s-eyebrow">Predictive | pre-lesson</p>
+        <p class="mt-1 text-sm text-ink-600">Which upcoming concepts the class will struggle with, before you teach them.</p>
       </div>
       <SButton variant="secondary" :disabled="!!session.loading" @click="session.recomputeForecasts()">
-        {{ session.loading === "recompute" ? "Recomputing…" : "Recompute" }}
+        {{ session.loading === "recompute" ? "Recomputing..." : "Recompute" }}
       </SButton>
     </div>
 
@@ -47,8 +47,8 @@ const p = (v: number) => Math.round(v * 100);
     />
     <div v-else-if="brief" class="mt-5 space-y-4">
       <p class="text-xs text-ink-500">
-        {{ brief.total_students }} students · threshold {{ p(brief.at_risk_threshold) }}%
-        <span v-if="brief.computed_at"> · computed {{ new Date(brief.computed_at).toLocaleString() }}</span>
+        {{ brief.total_students }} students | threshold {{ p(brief.at_risk_threshold) }}%
+        <span v-if="brief.computed_at"> | computed {{ new Date(brief.computed_at).toLocaleString() }}</span>
       </p>
       <article v-for="c in brief.concepts" :key="c.concept_id" class="rounded-lg border border-hairline bg-surface p-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -60,7 +60,7 @@ const p = (v: number) => Math.round(v * 100);
         </div>
         <p class="mt-3 text-sm text-ink-700">
           <span class="font-semibold text-ink-900">{{ c.at_risk_count }} of {{ c.total_students }}</span>
-          predicted to struggle · avg difficulty {{ p(c.average_difficulty) }}%
+          predicted to struggle | avg difficulty {{ p(c.average_difficulty) }}%
         </p>
         <div class="mt-2 h-2 w-full overflow-hidden rounded-sm bg-surface-sunken">
           <div class="h-full rounded-sm bg-accent-600" :style="{ width: `${p(c.average_difficulty)}%` }" />
@@ -70,13 +70,13 @@ const p = (v: number) => Math.round(v * 100);
           <ul class="mt-2 space-y-1">
             <li v-for="con in c.top_contributors" :key="con.concept_id" class="flex items-center justify-between gap-3 text-sm text-ink-700">
               <span>{{ con.title }}</span>
-              <span class="text-xs text-ink-500">avg mastery {{ p(con.average_effective_mastery) }}% · {{ con.mention_count }} students</span>
+              <span class="text-xs text-ink-500">avg mastery {{ p(con.average_effective_mastery) }}% | {{ con.mention_count }} students</span>
             </li>
           </ul>
         </div>
         <div class="mt-4">
           <SButton variant="primary" :disabled="!!session.loading" @click="session.generateForecastNarrative(c.concept_id)">
-            {{ session.loading === `forecast-narrative-${c.concept_id}` ? "Writing brief…" : "Generate teaching brief" }}
+            {{ session.loading === `forecast-narrative-${c.concept_id}` ? "Writing brief..." : "Generate teaching brief" }}
           </SButton>
           <div v-if="session.forecastNarratives[c.concept_id]" class="mt-3 rounded-md border border-hairline bg-paper p-4">
             <p class="text-sm leading-6 text-ink-800">{{ session.forecastNarratives[c.concept_id].summary }}</p>

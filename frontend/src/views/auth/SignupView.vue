@@ -37,12 +37,12 @@ async function submit() {
 <template>
   <div class="mx-auto flex max-w-reading flex-col items-center px-6 py-16">
     <SCard raised class="w-full max-w-lg">
-      <p class="s-eyebrow">Get started — free</p>
+      <p class="s-eyebrow">Get started, free</p>
       <h1 class="mt-2 font-display text-2xl font-semibold text-ink-900">Create your Slate workspace</h1>
 
       <form class="mt-6 space-y-4" @submit.prevent="submit">
         <div>
-          <span class="text-sm font-medium text-ink-700">I'm signing up as a…</span>
+          <span class="text-sm font-medium text-ink-700">I'm signing up as a...</span>
           <div class="mt-2 grid gap-2 sm:grid-cols-3">
             <button
               v-for="option in segments"
@@ -80,7 +80,7 @@ async function submit() {
           {{ session.error }}
         </p>
         <SButton type="submit" variant="primary" block :disabled="session.loading === 'register'">
-          {{ session.loading === "register" ? "Creating…" : "Create workspace" }}
+          {{ session.loading === "register" ? "Creating..." : "Create workspace" }}
         </SButton>
         <p class="text-center text-xs text-ink-500">All plans are free. No card required.</p>
       </form>

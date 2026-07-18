@@ -54,7 +54,7 @@ onMounted(() => {
             class="card-lift group flex items-center justify-between rounded-md border border-hairline bg-paper px-4 py-3 text-sm font-medium text-ink-800"
           >
             <span>{{ concept.title }}</span>
-            <span class="text-primary-600">Open <span class="nudge">→</span></span>
+            <span class="text-primary-600">Open</span>
           </RouterLink>
         </div>
       </section>

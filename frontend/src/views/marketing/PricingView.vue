@@ -23,7 +23,7 @@ const plans = [
         Everything is <Squiggle>free</Squiggle> right now.
       </h1>
       <p v-reveal class="mx-auto mt-5 max-w-reading text-lg leading-8 text-ink-700">
-        We're building in the open. Pick the shape that matches you — every plan is $0. Paid tiers, if they ever
+        We're building in the open. Pick the shape that matches you, every plan is $0. Paid tiers, if they ever
         arrive, won't touch what you've already got.
       </p>
 
@@ -79,7 +79,7 @@ const plans = [
             </li>
           </ul>
           <RouterLink :to="`/signup?segment=${plan.segment}`" class="mt-7 nudge-host">
-            <SButton :variant="plan.featured ? 'primary' : 'secondary'" block>Get started <span class="nudge">→</span></SButton>
+            <SButton :variant="plan.featured ? 'primary' : 'secondary'" block>Get started</SButton>
           </RouterLink>
         </div>
       </div>

@@ -45,7 +45,7 @@ async function demo(role: "teacher" | "student") {
           {{ session.error }}
         </p>
         <SButton type="submit" variant="primary" block :disabled="session.loading === 'login'">
-          {{ session.loading === "login" ? "Signing in…" : "Sign in" }}
+          {{ session.loading === "login" ? "Signing in..." : "Sign in" }}
         </SButton>
       </form>
 

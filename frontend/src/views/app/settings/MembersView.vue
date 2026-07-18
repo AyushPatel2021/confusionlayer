@@ -45,7 +45,7 @@ async function link() {
         </select>
       </label>
       <SButton type="submit" variant="primary" :disabled="!email.trim() || session.loading === 'invite-member'">
-        {{ session.loading === "invite-member" ? "Inviting…" : "Send invite" }}
+        {{ session.loading === "invite-member" ? "Inviting..." : "Send invite" }}
       </SButton>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
@@ -81,7 +81,7 @@ async function link() {
         <ul class="mt-3 divide-y divide-hairline overflow-hidden rounded-lg border border-dashed border-hairline bg-surface">
           <li v-for="p in session.pendingInvites" :key="p.id" class="flex items-center justify-between gap-2 px-5 py-3">
             <span class="text-sm text-ink-700">{{ p.email }}</span>
-            <SBadge tone="warning">{{ p.role.replace("_", " ") }} · pending</SBadge>
+            <SBadge tone="warning">{{ p.role.replace("_", " ") }} | pending</SBadge>
           </li>
         </ul>
       </div>

@@ -14,7 +14,7 @@ onMounted(() => {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Teacher · headline" title="Forecast brief" />
+    <SPageHeader eyebrow="Teacher | headline" title="Forecast brief" />
     <ForecastBrief />
   </div>
 </template>

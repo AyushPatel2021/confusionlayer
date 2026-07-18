@@ -10,7 +10,6 @@ import SButton from "../components/ui/SButton.vue";
       <div class="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-4">
         <RouterLink to="/" class="flex items-baseline gap-2">
           <span class="font-display text-xl font-semibold text-ink-900">Slate</span>
-          <span class="hidden text-xs font-medium text-ink-500 sm:inline">School OS</span>
         </RouterLink>
         <nav class="hidden items-center gap-7 text-sm font-medium text-ink-700 md:flex">
           <RouterLink class="link-underline transition-colors hover:text-primary-600" to="/schools">Schools</RouterLink>

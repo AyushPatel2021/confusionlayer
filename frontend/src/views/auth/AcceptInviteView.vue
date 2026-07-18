@@ -56,7 +56,7 @@ async function submit() {
             {{ session.error }}
           </p>
           <SButton type="submit" variant="primary" block :disabled="session.loading === 'accept'">
-            {{ session.loading === "accept" ? "Joining…" : "Accept invitation" }}
+            {{ session.loading === "accept" ? "Joining..." : "Accept invitation" }}
           </SButton>
         </form>
       </div>

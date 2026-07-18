@@ -5,7 +5,7 @@ import SPageHeader from "../../../components/ui/SPageHeader.vue";
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Self-start" title="Explore a topic" subtitle="Generate an original tutorial for anything — outside your syllabus, at your level." />
+    <SPageHeader eyebrow="Self-start" title="Explore a topic" subtitle="Generate an original tutorial for anything outside your syllabus, at your level." />
     <SelfStart />
   </div>
 </template>

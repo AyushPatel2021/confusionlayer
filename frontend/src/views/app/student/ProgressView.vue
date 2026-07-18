@@ -5,7 +5,7 @@ import SPageHeader from "../../../components/ui/SPageHeader.vue";
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Student · mastery over time" title="My progress" />
+    <SPageHeader eyebrow="Student | mastery over time" title="My progress" />
     <Progress />
   </div>
 </template>

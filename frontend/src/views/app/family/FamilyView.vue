@@ -33,7 +33,7 @@ const money = (cents: number) => `₹${(cents / 100).toLocaleString("en-IN")}`;
           <div>
             <dt class="text-xs text-ink-500">Average mastery</dt>
             <dd class="mt-1 font-display text-2xl font-semibold text-ink-900">
-              {{ child.average_mastery !== null ? Math.round(child.average_mastery * 100) + "%" : "—" }}
+              {{ child.average_mastery !== null ? Math.round(child.average_mastery * 100) + "%" : "N/A" }}
             </dd>
           </div>
           <div>

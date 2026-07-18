@@ -31,7 +31,7 @@ async function submit() {
           <input id="email" v-model="email" type="email" autocomplete="email" class="s-input mt-1" required />
         </div>
         <SButton type="submit" variant="primary" block :disabled="session.loading === 'forgot'">
-          {{ session.loading === "forgot" ? "Sending…" : "Send reset link" }}
+          {{ session.loading === "forgot" ? "Sending..." : "Send reset link" }}
         </SButton>
       </form>
 

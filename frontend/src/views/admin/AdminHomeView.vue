@@ -35,7 +35,7 @@ onMounted(() => session.loadAdmin());
             <tr v-for="org in session.adminOrgs" :key="org.id">
               <td class="px-4 py-3 font-medium text-ink-900">{{ org.name }}</td>
               <td class="px-4 py-3"><SBadge tone="primary">{{ org.segment }}</SBadge></td>
-              <td class="px-4 py-3 text-ink-700">{{ org.plan_code || "—" }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ org.plan_code || "," }}</td>
               <td class="px-4 py-3 text-ink-700">{{ org.member_count }}</td>
             </tr>
           </tbody>

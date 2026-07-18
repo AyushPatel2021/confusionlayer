@@ -43,13 +43,13 @@ async function commit() {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Curriculum · import" title="Import from a document" subtitle="We extract only the chapter and topic headings. The file is parsed in memory and never stored." />
+    <SPageHeader eyebrow="Curriculum | import" title="Import from a document" subtitle="We extract only the chapter and topic headings. The file is parsed in memory and never stored." />
 
     <div class="rounded-lg border border-dashed border-hairline bg-surface p-8 text-center">
       <input ref="fileInput" type="file" accept="application/pdf" class="hidden" @change="onFile" />
       <p class="text-sm text-ink-600">Upload a PDF (syllabus, contents page, chapter list).</p>
       <SButton class="mt-4" variant="primary" :disabled="session.loading === 'import'" @click="fileInput?.click()">
-        {{ session.loading === "import" ? "Reading…" : "Choose PDF" }}
+        {{ session.loading === "import" ? "Reading..." : "Choose PDF" }}
       </SButton>
       <p v-if="session.error" class="mt-3 text-sm text-danger">{{ session.error }}</p>
     </div>
@@ -81,7 +81,7 @@ async function commit() {
 
       <div class="flex items-center gap-3">
         <SButton variant="primary" :disabled="!name.trim() || !session.importDraft.length || session.loading === 'commit-import'" @click="commit">
-          {{ session.loading === "commit-import" ? "Saving…" : "Save curriculum" }}
+          {{ session.loading === "commit-import" ? "Saving..." : "Save curriculum" }}
         </SButton>
         <p class="text-sm text-ink-500">{{ session.importDraft.length }} chapters</p>
       </div>

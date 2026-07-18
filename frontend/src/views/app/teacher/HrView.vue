@@ -60,7 +60,7 @@ async function run() {
           <tbody class="divide-y divide-hairline">
             <tr v-for="e in session.employees" :key="e.id">
               <td class="px-4 py-3 font-medium text-ink-900">{{ e.name }}</td>
-              <td class="px-4 py-3 text-ink-700">{{ e.designation || "—" }}</td>
+              <td class="px-4 py-3 text-ink-700">{{ e.designation || "N/A" }}</td>
               <td class="px-4 py-3 text-ink-700">{{ money(e.salary_cents) }}</td>
               <td class="px-4 py-3"><SBadge :tone="e.status === 'active' ? 'success' : 'neutral'">{{ e.status }}</SBadge></td>
             </tr>
@@ -82,7 +82,7 @@ async function run() {
       <ul class="mt-3 space-y-2">
         <li v-for="r in session.payrollRuns" :key="r.id" class="flex items-center justify-between rounded-md border border-hairline bg-surface px-4 py-3 text-sm">
           <span class="font-medium text-ink-900">{{ r.period }}</span>
-          <span class="text-ink-500">{{ r.payslip_count }} payslips · net {{ money(r.total_net_cents) }} <SBadge tone="success">{{ r.status }}</SBadge></span>
+          <span class="text-ink-500">{{ r.payslip_count }} payslips | net {{ money(r.total_net_cents) }} <SBadge tone="success">{{ r.status }}</SBadge></span>
         </li>
         <li v-if="!session.payrollRuns.length" class="text-sm text-ink-500">No payroll runs yet.</li>
       </ul>

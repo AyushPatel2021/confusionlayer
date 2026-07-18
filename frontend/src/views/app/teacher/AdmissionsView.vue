@@ -35,7 +35,7 @@ async function submit() {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Admissions" title="Applicant pipeline" subtitle="From enquiry to enrolled — track every applicant.">
+    <SPageHeader eyebrow="Admissions" title="Applicant pipeline" subtitle="From enquiry to enrolled. Track every applicant.">
       <template #actions>
         <SButton variant="primary" @click="showForm = !showForm">{{ showForm ? "Close" : "New application" }}</SButton>
       </template>
@@ -48,7 +48,7 @@ async function submit() {
       <label class="text-sm">Notes<input v-model="form.notes" class="s-input mt-1" /></label>
       <div class="sm:col-span-2">
         <SButton type="submit" variant="primary" :disabled="!form.applicant_name.trim() || session.loading === 'create-application'">
-          {{ session.loading === "create-application" ? "Adding…" : "Add application" }}
+          {{ session.loading === "create-application" ? "Adding..." : "Add application" }}
         </SButton>
       </div>
     </form>

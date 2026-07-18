@@ -179,16 +179,6 @@ button:disabled {
   box-shadow: 0 12px 30px rgba(31, 42, 46, 0.1);
 }
 
-/* Arrow nudge inside links/buttons on hover */
-.nudge {
-  display: inline-block;
-  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.group:hover .nudge,
-.nudge-host:hover .nudge {
-  transform: translateX(4px);
-}
-
 /* Forecast motif bars: gentle grow-in when revealed */
 .motif-bar {
   transform: scaleY(0.15);
@@ -267,35 +257,6 @@ button:disabled {
   }
 }
 
-/* Pulsing accent dot */
-.pulse-dot {
-  position: relative;
-}
-.pulse-dot::before {
-  content: "";
-  position: absolute;
-  left: -14px;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  margin-top: -3.5px;
-  border-radius: 9999px;
-  background: #0f6e6e;
-  box-shadow: 0 0 0 0 rgba(15, 110, 110, 0.5);
-  animation: pulse 2.4s ease-out infinite;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(15, 110, 110, 0.45);
-  }
-  70% {
-    box-shadow: 0 0 0 9px rgba(15, 110, 110, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(15, 110, 110, 0);
-  }
-}
-
 /* Word-by-word hero reveal */
 .word {
   display: inline-block;
@@ -336,7 +297,6 @@ button:disabled {
   .reveal-in,
   .motif-bar,
   .card-lift,
-  .nudge,
   .link-underline::after,
   .draw path,
   .draw circle,
