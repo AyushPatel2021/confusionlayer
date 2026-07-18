@@ -79,7 +79,7 @@ from app.models import (
     User,
 )
 
-app = FastAPI(title="ConfusionLayer API")
+app = FastAPI(title="Slate API")
 
 
 class SubjectResponse(BaseModel):

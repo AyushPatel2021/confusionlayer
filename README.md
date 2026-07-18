@@ -144,6 +144,6 @@ Slate aligns to official public curriculum *structure* (e.g., CBSE / NCERT) with
 textbook content — structure, titles, and links only; all learner-facing content is original
 or AI-generated within a defined scope.
 
-> Slate / ConfusionLayer is an independent educational product and is not affiliated with or
-> endorsed by CBSE or NCERT. Curriculum references are used for educational alignment. Official
+> Slate is an independent educational product and is not affiliated with or endorsed by CBSE or
+> NCERT. Curriculum references are used for educational alignment. Official
 > textbooks remain available through NCERT and ePathshala.

@@ -427,7 +427,7 @@ def backfill_tenancy(session: Session) -> dict[str, int]:
     for code, segment, name, limits, features in PLANS:
         get_or_create(session, Plan, code=code, defaults={"segment": segment, "name": name, "price_cents": 0, "limits": limits, "features": features})
 
-    org = get_or_create(session, Organization, slug=DEMO_ORG_SLUG, defaults={"name": "ConfusionLayer Demo", "segment": "school"})
+    org = get_or_create(session, Organization, slug=DEMO_ORG_SLUG, defaults={"name": "Slate Demo School", "segment": "school"})
     school_plan = session.scalar(select(Plan).where(Plan.code == "school_free"))
     get_or_create(session, Subscription, org_id=org.id, defaults={"plan_id": school_plan.id, "status": "active"})
 

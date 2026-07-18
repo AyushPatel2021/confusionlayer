@@ -63,7 +63,7 @@ async function signOut() {
         </main>
 
         <footer class="border-t border-hairline px-5 py-3 text-center text-xs text-ink-500">
-          Slate / ConfusionLayer — independent educational product, not affiliated with CBSE or NCERT.
+          Slate is an independent educational product, not affiliated with CBSE or NCERT.
         </footer>
       </div>
     </div>

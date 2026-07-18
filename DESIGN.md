@@ -1,4 +1,4 @@
-# DESIGN.md — ConfusionLayer Design System
+# DESIGN.md — Slate Design System
 
 > **Status: v1 — global system decided (agent's call, per human delegation on 2026-07-15).**
 >
