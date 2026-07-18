@@ -9,10 +9,10 @@ import { useSessionStore, type Invoice } from "../../../stores/session";
 
 const session = useSessionStore();
 const showForm = ref(false);
-const form = ref({ recipient_name: "", amount: "", description: "" });
+const form = ref({ recipient_name: "", student_id: null as number | null, amount: "", description: "" });
 const editingId = ref<number | null>(null);
 
-onMounted(() => session.loadFees());
+onMounted(async () => { await session.loadFees(); await session.loadStudentOptions(); });
 
 const money = (cents: number) => `₹${(cents / 100).toLocaleString("en-IN", { minimumFractionDigits: 0 })}`;
 
@@ -23,15 +23,16 @@ function statusTone(s: string) {
 async function submit() {
   const amount_cents = Math.round(parseFloat(form.value.amount || "0") * 100);
   const saved = editingId.value
-    ? await session.updateInvoice(editingId.value, { recipient_name: form.value.recipient_name, amount_cents, description: form.value.description || undefined })
-    : await session.createInvoice({ recipient_name: form.value.recipient_name, amount_cents, description: form.value.description || undefined });
+    ? await session.updateInvoice(editingId.value, { recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, description: form.value.description || undefined })
+    : await session.createInvoice({ recipient_name: form.value.recipient_name, student_id: form.value.student_id || undefined, amount_cents, description: form.value.description || undefined });
   if (saved) {
-    form.value = { recipient_name: "", amount: "", description: "" };
+    form.value = { recipient_name: "", student_id: null, amount: "", description: "" };
     editingId.value = null;
     showForm.value = false;
   }
 }
-function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient_name: inv.recipient_name, amount: String(inv.amount_cents / 100), description: inv.description || "" }; showForm.value = true; }
+function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient_name: inv.recipient_name, student_id: inv.student_id, amount: String(inv.amount_cents / 100), description: inv.description || "" }; showForm.value = true; }
+function selectStudent() { const student = session.studentOptions.find((item) => item.id === form.value.student_id); if (student) form.value.recipient_name = student.name; }
 
 async function collect(inv: Invoice) {
   const remaining = inv.amount_cents - inv.paid_cents;
@@ -58,11 +59,12 @@ async function collect(inv: Invoice) {
       <div class="rounded-md border border-hairline bg-surface p-4"><p class="text-xs text-ink-500">Invoices</p><p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ session.feesSummary.invoice_count }}</p></div>
     </div>
 
-    <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-3" @submit.prevent="submit">
+    <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-4" @submit.prevent="submit">
       <label class="text-sm">Bill to<input v-model="form.recipient_name" class="s-input mt-1" required /></label>
+      <label class="text-sm">Student<select v-model="form.student_id" class="s-input mt-1" @change="selectStudent"><option :value="null">External payer</option><option v-for="student in session.studentOptions" :key="student.id" :value="student.id">{{ student.name }}</option></select></label>
       <label class="text-sm">Amount (₹)<input v-model="form.amount" type="number" min="0" step="1" class="s-input mt-1" required /></label>
       <label class="text-sm">Description<input v-model="form.description" class="s-input mt-1" /></label>
-      <div class="sm:col-span-3"><SButton type="submit" variant="primary" :disabled="!form.recipient_name.trim() || session.loading === 'create-invoice'">{{ editingId ? "Save invoice" : "Create invoice" }}</SButton></div>
+      <div class="sm:col-span-4"><SButton type="submit" variant="primary" :disabled="!form.recipient_name.trim() || session.loading === 'create-invoice'">{{ editingId ? "Save invoice" : "Create invoice" }}</SButton></div>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 

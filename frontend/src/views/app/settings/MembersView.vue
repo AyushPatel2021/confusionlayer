@@ -15,7 +15,7 @@ const inviteDepartment = ref("Teaching & learning");
 const departmentOptions = ["Teaching & learning", "Admissions", "Accounts", "HR", "Front-office", "Family", "Learning", "Workspace"];
 const departmentsForRole: Record<string, string> = { teacher: "Teaching & learning", student: "Learning", school_admin: "Front-office", accountant: "Accounts", hr: "HR", parent: "Family" };
 const guardianEmail = ref("");
-const guardianStudentId = ref("");
+const guardianStudentId = ref<number | null>(null);
 const guardianDone = ref(false);
 const query = ref("");
 const department = ref("all");
@@ -25,7 +25,10 @@ const visibleMembers = computed(() => session.members.filter((member) => {
 }));
 const departments = computed(() => [...new Set(session.members.map((member) => member.department))]);
 
-onMounted(() => session.loadMembers());
+onMounted(async () => {
+  await session.loadMembers();
+  if (session.user?.segment === "school") await session.loadStudentOptions();
+});
 
 async function invite() {
   if (await session.inviteMember(email.value, role.value, inviteDepartment.value)) email.value = "";
@@ -33,12 +36,12 @@ async function invite() {
 function roleChanged() { inviteDepartment.value = departmentsForRole[role.value] || "Workspace"; }
 
 async function link() {
-  const id = Number(guardianStudentId.value);
+  const id = guardianStudentId.value;
   if (!guardianEmail.value.trim() || !id) return;
   guardianDone.value = false;
   if (await session.linkGuardian(guardianEmail.value.trim(), id)) {
     guardianEmail.value = "";
-    guardianStudentId.value = "";
+    guardianStudentId.value = null;
     guardianDone.value = true;
   }
 }
@@ -74,7 +77,7 @@ function removeMember(member: { id: number; name: string | null; email: string }
       <p class="mt-1 text-xs text-ink-500">Connect an invited parent account to a student so they can follow along.</p>
       <form class="mt-3 flex flex-wrap items-end gap-3" @submit.prevent="link">
         <label class="flex-1 text-sm">Parent email<input v-model="guardianEmail" type="email" class="s-input mt-1" /></label>
-        <label class="text-sm">Student ID<input v-model="guardianStudentId" type="number" class="s-input mt-1" /></label>
+        <label class="text-sm">Student<select v-model="guardianStudentId" class="s-input mt-1"><option :value="null">Choose student</option><option v-for="student in session.studentOptions" :key="student.id" :value="student.id">{{ student.name }}</option></select></label>
         <SButton type="submit" variant="secondary" :disabled="session.loading === 'link-guardian'">Link</SButton>
       </form>
       <p v-if="guardianDone" class="mt-2 text-sm text-success">Linked.</p>

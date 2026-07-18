@@ -23,12 +23,13 @@ from app.main import (
     create_fee_structure,
     create_invoice,
     create_payroll_run,
+    fee_student_options,
     fees_summary,
     list_invoices,
     record_payment,
     void_invoice,
 )
-from app.models import Base
+from app.models import Base, Student, User
 from app.seed import backfill_tenancy
 
 
@@ -83,6 +84,26 @@ class FeesHrTest(TestCase):
         with self.assertRaises(HTTPException) as exc:  # institute plan lacks accounting
             create_invoice(InvoiceCreateRequest(recipient_name="x", amount_cents=1), current_user=self.inst_owner, db=self.db)
         self.assertEqual(exc.exception.status_code, 403)
+
+    def test_invoice_student_link_requires_org_membership(self) -> None:
+        student = Student(name="Asha")
+        self.db.add(student)
+        self.db.flush()
+        member = User(org_id=self.org.id, email="asha@gv.test", password_hash="x", role="student", name="Asha", student_id=student.id)
+        self.db.add(member)
+        self.db.commit()
+
+        options = fee_student_options(current_user=self.owner, db=self.db)
+        self.assertEqual([(item.id, item.name) for item in options], [(student.id, "Asha")])
+        invoice = create_invoice(InvoiceCreateRequest(recipient_name="Asha", student_id=student.id, amount_cents=1000), current_user=self.owner, db=self.db)
+        self.assertEqual(invoice.student_id, student.id)
+
+        outsider = Student(name="Outside")
+        self.db.add(outsider)
+        self.db.commit()
+        with self.assertRaises(HTTPException) as exc:
+            create_invoice(InvoiceCreateRequest(recipient_name="Outside", student_id=outsider.id, amount_cents=1000), current_user=self.owner, db=self.db)
+        self.assertEqual(exc.exception.status_code, 404)
 
     # ---- HR / payroll ----
 

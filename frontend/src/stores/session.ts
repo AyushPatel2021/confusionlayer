@@ -284,6 +284,7 @@ export interface AdmissionApplication {
 
 export interface Invoice {
   id: number;
+  student_id: number | null;
   recipient_name: string;
   description: string | null;
   amount_cents: number;
@@ -421,6 +422,7 @@ export const useSessionStore = defineStore("session", {
     dashboard: null as Dashboard | null,
     classrooms: [] as ManagedClassroom[],
     classroomOptions: null as ClassroomOptions | null,
+    studentOptions: [] as ClassroomMember[],
     orgSettings: null as OrganizationSettings | null,
     searchResults: [] as SearchResult[],
     notifications: [] as NotificationItem[],
@@ -661,6 +663,13 @@ export const useSessionStore = defineStore("session", {
     async loadClassroomOptions() {
       try {
         this.classroomOptions = await api<ClassroomOptions>("/api/classrooms/options");
+      } catch (error) {
+        this.error = messageFromError(error);
+      }
+    },
+    async loadStudentOptions() {
+      try {
+        this.studentOptions = await api<ClassroomMember[]>("/api/fees/students/options");
       } catch (error) {
         this.error = messageFromError(error);
       }
@@ -1250,7 +1259,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string }): Promise<boolean> {
+    async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number }): Promise<boolean> {
       this.loading = "create-invoice";
       this.error = "";
       try {
@@ -1264,7 +1273,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async updateInvoice(invoiceId: number, payload: { recipient_name: string; amount_cents: number; description?: string }): Promise<boolean> {
+    async updateInvoice(invoiceId: number, payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number }): Promise<boolean> {
       this.loading = `invoice-${invoiceId}`;
       this.error = "";
       try { await api(`/api/fees/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadFees(); return true; }

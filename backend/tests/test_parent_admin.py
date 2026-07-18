@@ -38,6 +38,9 @@ class ParentAdminTest(TestCase):
         self.parent = User(org_id=self.org.id, email="p@gv.test", password_hash="x", role="parent", name="Parent")
         self.student = Student(name="Child A")
         self.db.add_all([self.parent, self.student])
+        self.db.flush()
+        self.student_member = User(org_id=self.org.id, email="child@gv.test", password_hash="x", role="student", name="Child A", student_id=self.student.id)
+        self.db.add(self.student_member)
         self.db.commit()
 
     def tearDown(self) -> None:

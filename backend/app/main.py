@@ -592,6 +592,7 @@ class PaymentCreateRequest(BaseModel):
 
 class InvoiceResponse(BaseModel):
     id: int
+    student_id: int | None
     recipient_name: str
     description: str | None
     amount_cents: int
@@ -1682,6 +1683,33 @@ def _org_student(db: Session, org_id: int, student_id: int) -> Student:
     return student
 
 
+def _student_options(db: Session, org_id: int) -> list[ClassroomMemberResponse]:
+    members = db.scalars(
+        select(User)
+        .where(User.org_id == org_id, User.role == "student", User.student_id.is_not(None))
+        .order_by(User.name)
+    ).all()
+    admission_students = db.scalars(
+        select(Student)
+        .join(AdmissionApplication, AdmissionApplication.student_id == Student.id)
+        .where(AdmissionApplication.org_id == org_id)
+        .order_by(Student.name)
+    ).all()
+    known_student_ids = {member.student_id for member in members}
+    return [
+        ClassroomMemberResponse(
+            id=member.student_id,
+            name=member.name or db.get(Student, member.student_id).name,
+        )
+        for member in members
+        if member.student_id
+    ] + [
+        ClassroomMemberResponse(id=student.id, name=student.name)
+        for student in admission_students
+        if student.id not in known_student_ids
+    ]
+
+
 @app.get("/api/classrooms", response_model=list[ManagedClassroomResponse])
 def list_classrooms(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ManagedClassroomResponse]:
     org = _require_classroom_manager(current_user, db)
@@ -1694,13 +1722,10 @@ def classroom_options(current_user: User = Depends(get_current_user), db: Sessio
     org = _require_classroom_manager(current_user, db)
     subjects = db.scalars(select(Subject).where(Subject.org_id == org.id).order_by(Subject.name)).all()
     teachers = db.scalars(select(User).where(User.org_id == org.id, User.role == "teacher", User.teacher_id.is_not(None)).order_by(User.name)).all()
-    students = db.scalars(select(User).where(User.org_id == org.id, User.role == "student", User.student_id.is_not(None)).order_by(User.name)).all()
-    admission_students = db.scalars(select(Student).join(AdmissionApplication, AdmissionApplication.student_id == Student.id).where(AdmissionApplication.org_id == org.id).order_by(Student.name)).all()
-    known_student_ids = {user.student_id for user in students}
     return ClassroomOptionsResponse(
         subjects=[_subject_response(subject) for subject in subjects],
         teachers=[ClassroomMemberResponse(id=user.teacher_id, name=db.get(Teacher, user.teacher_id).name) for user in teachers if user.teacher_id],
-        students=[ClassroomMemberResponse(id=user.student_id, name=db.get(Student, user.student_id).name) for user in students if user.student_id] + [ClassroomMemberResponse(id=student.id, name=student.name) for student in admission_students if student.id not in known_student_ids],
+        students=_student_options(db, org.id),
     )
 
 
@@ -2187,6 +2212,7 @@ def _invoice_status(amount_cents: int, paid_cents: int, voided: bool) -> str:
 def _invoice_response(invoice: Invoice, paid_cents: int) -> InvoiceResponse:
     return InvoiceResponse(
         id=invoice.id,
+        student_id=invoice.student_id,
         recipient_name=invoice.recipient_name,
         description=invoice.description,
         amount_cents=invoice.amount_cents,
@@ -2215,6 +2241,13 @@ def list_fee_structures(current_user: User = Depends(get_current_user), db: Sess
     return [FeeStructureResponse(id=r.id, name=r.name, amount_cents=r.amount_cents) for r in rows]
 
 
+@app.get("/api/fees/students/options", response_model=list[ClassroomMemberResponse])
+def fee_student_options(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ClassroomMemberResponse]:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    return _student_options(db, current_user.org_id or 0)
+
+
 @app.post("/api/fees/structures", response_model=FeeStructureResponse, status_code=status.HTTP_201_CREATED)
 def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FeeStructureResponse:
     _require_roles(current_user, FEES_ROLES)
@@ -2241,6 +2274,8 @@ def list_invoices(q: str = "", offset: int = 0, limit: int = 100, current_user: 
 def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
     _require_roles(current_user, FEES_ROLES)
     _require_module(db, current_user, "accounting")
+    if payload.student_id is not None:
+        _org_student(db, current_user.org_id or 0, payload.student_id)
     invoice = Invoice(
         org_id=current_user.org_id,
         student_id=payload.student_id,
@@ -2260,6 +2295,8 @@ def update_invoice(invoice_id: int, payload: InvoiceCreateRequest, current_user:
     invoice = _owned_invoice(db, current_user, invoice_id)
     if invoice.voided or db.scalar(select(func.count(Payment.id)).where(Payment.invoice_id == invoice.id)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only unpaid active invoices can be edited")
+    if payload.student_id is not None:
+        _org_student(db, current_user.org_id or 0, payload.student_id)
     invoice.student_id = payload.student_id
     invoice.recipient_name = payload.recipient_name.strip()
     invoice.description = (payload.description or "").strip() or None
