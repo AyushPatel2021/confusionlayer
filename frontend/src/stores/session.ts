@@ -350,6 +350,7 @@ export interface AdminUsage {
   employees: number;
   applications: number;
 }
+export interface AdminAuditLog { id: number; action: string; target: string | null; organization: string | null; actor: string | null; created_at: string; }
 
 export interface ClassroomMember {
   id: number;
@@ -423,6 +424,7 @@ export const useSessionStore = defineStore("session", {
     children: [] as Child[],
     adminOrgs: [] as AdminOrg[],
     adminUsage: null as AdminUsage | null,
+    adminAuditLogs: [] as AdminAuditLog[],
     dashboard: null as Dashboard | null,
     classrooms: [] as ManagedClassroom[],
     classroomOptions: null as ClassroomOptions | null,
@@ -1421,8 +1423,10 @@ export const useSessionStore = defineStore("session", {
       this.loading = "admin";
       this.error = "";
       try {
-        this.adminOrgs = await api<AdminOrg[]>("/api/admin/orgs", { });
-        this.adminUsage = await api<AdminUsage>("/api/admin/usage", { });
+        const [orgs, usage, auditLogs] = await Promise.all([api<AdminOrg[]>("/api/admin/orgs", { }), api<AdminUsage>("/api/admin/usage", { }), api<AdminAuditLog[]>("/api/admin/audit-logs")]);
+        this.adminOrgs = orgs;
+        this.adminUsage = usage;
+        this.adminAuditLogs = auditLogs;
       } catch (error) {
         this.error = messageFromError(error);
       } finally {

@@ -759,6 +759,15 @@ class AdminUsageResponse(BaseModel):
     users: int
     students: int
     invoices: int
+
+
+class AdminAuditLogResponse(BaseModel):
+    id: int
+    action: str
+    target: str | None
+    organization: str | None
+    actor: str | None
+    created_at: datetime
     employees: int
     applications: int
 
@@ -2643,6 +2652,13 @@ def admin_usage(current_user: User = Depends(get_current_user), db: Session = De
         employees=count(Employee),
         applications=count(AdmissionApplication),
     )
+
+
+@app.get("/api/admin/audit-logs", response_model=list[AdminAuditLogResponse])
+def admin_audit_logs(limit: int = 50, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AdminAuditLogResponse]:
+    _require_platform_admin(current_user)
+    rows = db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(max(1, min(limit, 200)))).all()
+    return [AdminAuditLogResponse(id=row.id, action=row.action, target=row.target, organization=db.get(Organization, row.org_id).name if row.org_id and db.get(Organization, row.org_id) else None, actor=db.get(User, row.actor_user_id).name if row.actor_user_id and db.get(User, row.actor_user_id) else None, created_at=row.created_at) for row in rows]
 
 
 def _require_teacher_classroom(db: Session, user: User, classroom_id: int, action: str) -> Classroom:

@@ -66,6 +66,7 @@ function renderChart() {
           </tbody>
         </table>
       </div>
+      <section class="overflow-hidden rounded-lg border border-hairline bg-surface"><div class="border-b border-hairline p-5"><p class="s-eyebrow">Audit trail</p></div><div v-if="session.adminAuditLogs.length" class="divide-y divide-hairline"><div v-for="entry in session.adminAuditLogs" :key="entry.id" class="grid gap-1 p-4 text-sm sm:grid-cols-[1fr_1fr_1fr_auto]"><span class="font-medium text-ink-900">{{ entry.action.replace(/\./g, ' ') }}</span><span class="text-ink-700">{{ entry.target || 'System' }}</span><span class="text-ink-500">{{ entry.organization || 'Platform' }} · {{ entry.actor || 'System' }}</span><time class="text-xs text-ink-500">{{ new Date(entry.created_at).toLocaleString() }}</time></div></div><p v-else class="p-5 text-sm text-ink-500">No recorded activity yet.</p></section>
     </template>
   </div>
 </template>
