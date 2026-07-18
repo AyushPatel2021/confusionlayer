@@ -66,6 +66,7 @@ from app.models import (
     ConfusionBrief,
     ForecastRecord,
     Employee,
+    Designation,
     DEPARTMENTS,
     FeeStructure,
     GuardianLink,
@@ -86,6 +87,7 @@ from app.models import (
     StudentTransportAssignment,
     Subject,
     Subscription,
+    SalaryStructure,
     Teacher,
     TeachBackAttempt,
     TimetableEntry,
@@ -672,6 +674,19 @@ class EmployeeCreateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     join_date: date | None = None
     salary_cents: int = Field(default=0, ge=0)
+    designation_id: int | None = None
+    salary_structure_id: int | None = None
+    employment_type: Literal["full_time", "part_time", "contract", "intern"] = "full_time"
+
+
+class DesignationRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    department: str | None = Field(default=None, max_length=80)
+
+
+class SalaryStructureRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    monthly_amount_cents: int = Field(ge=0)
 
 
 class EmployeeStatusRequest(BaseModel):
@@ -742,6 +757,17 @@ class EmployeeResponse(BaseModel):
     join_date: date | None
     salary_cents: int
     status: str
+    designation_id: int | None
+    salary_structure_id: int | None
+    employment_type: str
+
+
+class DesignationResponse(DesignationRequest):
+    id: int
+
+
+class SalaryStructureResponse(SalaryStructureRequest):
+    id: int
 
 
 class PayslipResponse(BaseModel):
@@ -2542,6 +2568,46 @@ def student_fee_ledger(student_id: int, current_user: User = Depends(get_current
 # ---- M9: HR & payroll ----
 
 
+def _employee_response(employee: Employee) -> EmployeeResponse:
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status, designation_id=employee.designation_id, salary_structure_id=employee.salary_structure_id, employment_type=employee.employment_type)
+
+
+@app.get("/api/hr/designations", response_model=list[DesignationResponse])
+def list_designations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[DesignationResponse]:
+    _require_roles(current_user, HR_ROLES); _require_module(db, current_user, "hr")
+    return [DesignationResponse(id=row.id, name=row.name, department=row.department) for row in db.scalars(select(Designation).where(Designation.org_id == current_user.org_id).order_by(Designation.name)).all()]
+
+
+@app.post("/api/hr/designations", response_model=DesignationResponse, status_code=status.HTTP_201_CREATED)
+def create_designation(payload: DesignationRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DesignationResponse:
+    _require_roles(current_user, HR_ROLES); _require_module(db, current_user, "hr")
+    row = Designation(org_id=current_user.org_id, name=payload.name.strip(), department=(payload.department or "").strip() or None)
+    db.add(row); _audit(db, current_user, "hr.designation.created", row.name); db.commit(); db.refresh(row)
+    return DesignationResponse(id=row.id, name=row.name, department=row.department)
+
+
+@app.get("/api/hr/salary-structures", response_model=list[SalaryStructureResponse])
+def list_salary_structures(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[SalaryStructureResponse]:
+    _require_roles(current_user, HR_ROLES); _require_module(db, current_user, "hr")
+    return [SalaryStructureResponse(id=row.id, name=row.name, monthly_amount_cents=row.monthly_amount_cents) for row in db.scalars(select(SalaryStructure).where(SalaryStructure.org_id == current_user.org_id).order_by(SalaryStructure.name)).all()]
+
+
+@app.post("/api/hr/salary-structures", response_model=SalaryStructureResponse, status_code=status.HTTP_201_CREATED)
+def create_salary_structure(payload: SalaryStructureRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SalaryStructureResponse:
+    _require_roles(current_user, HR_ROLES); _require_module(db, current_user, "hr")
+    row = SalaryStructure(org_id=current_user.org_id, name=payload.name.strip(), monthly_amount_cents=payload.monthly_amount_cents)
+    db.add(row); _audit(db, current_user, "hr.salary_structure.created", row.name); db.commit(); db.refresh(row)
+    return SalaryStructureResponse(id=row.id, name=row.name, monthly_amount_cents=row.monthly_amount_cents)
+
+
+def _hr_reference_ids(db: Session, user: User, payload: EmployeeCreateRequest) -> tuple[int | None, int | None, str | None, int]:
+    designation = db.get(Designation, payload.designation_id) if payload.designation_id else None
+    structure = db.get(SalaryStructure, payload.salary_structure_id) if payload.salary_structure_id else None
+    if designation and designation.org_id != user.org_id or structure and structure.org_id != user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HR reference not found")
+    return (designation.id if designation else None, structure.id if structure else None, designation.name if designation else (payload.designation or "").strip() or None, structure.monthly_amount_cents if structure else payload.salary_cents)
+
+
 @app.get("/api/hr/employees", response_model=list[EmployeeResponse])
 def list_employees(q: str = "", offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[EmployeeResponse]:
     _require_roles(current_user, HR_ROLES)
@@ -2550,27 +2616,28 @@ def list_employees(q: str = "", offset: int = 0, limit: int = 100, current_user:
     if q.strip():
         pattern = f"%{q.strip()}%"; statement = statement.where(or_(Employee.name.ilike(pattern), Employee.email.ilike(pattern), Employee.designation.ilike(pattern)))
     rows = db.scalars(statement.order_by(Employee.id).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
-    return [EmployeeResponse(id=e.id, name=e.name, email=e.email, designation=e.designation, phone=e.phone, join_date=e.join_date, salary_cents=e.salary_cents, status=e.status) for e in rows]
+    return [_employee_response(e) for e in rows]
 
 
 @app.post("/api/hr/employees", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(payload: EmployeeCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> EmployeeResponse:
     _require_roles(current_user, HR_ROLES)
     _require_module(db, current_user, "hr")
+    designation_id, structure_id, designation, salary_cents = _hr_reference_ids(db, current_user, payload)
     employee = Employee(
         org_id=current_user.org_id,
         name=payload.name.strip(),
         email=(payload.email or "").strip() or None,
-        designation=(payload.designation or "").strip() or None,
+        designation=designation, designation_id=designation_id, salary_structure_id=structure_id, employment_type=payload.employment_type,
         phone=(payload.phone or "").strip() or None,
         join_date=payload.join_date,
-        salary_cents=payload.salary_cents,
+        salary_cents=salary_cents,
     )
     db.add(employee)
     _audit(db, current_user, "hr.employee.created", employee.name)
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
+    return _employee_response(employee)
 
 
 @app.patch("/api/hr/employees/{employee_id}", response_model=EmployeeResponse)
@@ -2580,16 +2647,17 @@ def update_employee(employee_id: int, payload: EmployeeCreateRequest, current_us
     employee = db.get(Employee, employee_id)
     if not employee or employee.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    designation_id, structure_id, designation, salary_cents = _hr_reference_ids(db, current_user, payload)
     employee.name = payload.name.strip()
     employee.email = (payload.email or "").strip() or None
-    employee.designation = (payload.designation or "").strip() or None
+    employee.designation = designation; employee.designation_id = designation_id; employee.salary_structure_id = structure_id; employee.employment_type = payload.employment_type
     employee.phone = (payload.phone or "").strip() or None
     employee.join_date = payload.join_date
-    employee.salary_cents = payload.salary_cents
+    employee.salary_cents = salary_cents
     _audit(db, current_user, "hr.employee.updated", employee.name)
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
+    return _employee_response(employee)
 
 
 @app.post("/api/hr/employees/{employee_id}/status", response_model=EmployeeResponse)
@@ -2603,7 +2671,7 @@ def set_employee_status(employee_id: int, payload: EmployeeStatusRequest, curren
     _audit(db, current_user, f"hr.employee.{payload.status}", employee.name)
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
+    return _employee_response(employee)
 
 
 @app.get("/api/hr/payroll", response_model=list[PayrollRunResponse])

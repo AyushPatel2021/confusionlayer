@@ -501,6 +501,26 @@ class GuardianLink(Base):
 # --- M9: HR & payroll ---
 
 
+class Designation(Base):
+    __tablename__ = "designations"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_designation_org_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    department: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class SalaryStructure(Base):
+    __tablename__ = "salary_structures"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_salary_structure_org_name"), CheckConstraint("monthly_amount_cents >= 0", name="ck_salary_structure_amount"))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    monthly_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class Employee(Base):
     __tablename__ = "employees"
     __table_args__ = (
@@ -513,6 +533,9 @@ class Employee(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     designation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    designation_id: Mapped[int | None] = mapped_column(ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
+    salary_structure_id: Mapped[int | None] = mapped_column(ForeignKey("salary_structures.id", ondelete="SET NULL"), nullable=True)
+    employment_type: Mapped[str] = mapped_column(String(30), default="full_time", server_default="full_time", nullable=False)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     join_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     salary_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)

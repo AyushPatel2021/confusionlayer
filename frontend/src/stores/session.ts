@@ -316,7 +316,12 @@ export interface Employee {
   join_date: string | null;
   salary_cents: number;
   status: string;
+  designation_id: number | null;
+  salary_structure_id: number | null;
+  employment_type: string;
 }
+export interface Designation { id: number; name: string; department: string | null; }
+export interface SalaryStructure { id: number; name: string; monthly_amount_cents: number; }
 
 export interface PayrollRun {
   id: number;
@@ -427,6 +432,8 @@ export const useSessionStore = defineStore("session", {
     feeLedger: null as FeeLedger | null,
     feeStructures: [] as FeeStructure[],
     employees: [] as Employee[],
+    designations: [] as Designation[],
+    salaryStructures: [] as SalaryStructure[],
     payrollRuns: [] as PayrollRun[],
     children: [] as Child[],
     adminOrgs: [] as AdminOrg[],
@@ -1360,7 +1367,17 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async createEmployee(payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number }): Promise<boolean> {
+    async loadHrReferences() {
+      try { const [designations, structures] = await Promise.all([api<Designation[]>("/api/hr/designations"), api<SalaryStructure[]>("/api/hr/salary-structures")]); this.designations = designations; this.salaryStructures = structures; }
+      catch (error) { this.error = messageFromError(error); }
+    },
+    async createDesignation(payload: { name: string; department?: string }): Promise<boolean> {
+      try { await api("/api/hr/designations", { method: "POST", body: JSON.stringify(payload) }); await this.loadHrReferences(); return true; } catch (error) { this.error = messageFromError(error); return false; }
+    },
+    async createSalaryStructure(payload: { name: string; monthly_amount_cents: number }): Promise<boolean> {
+      try { await api("/api/hr/salary-structures", { method: "POST", body: JSON.stringify(payload) }); await this.loadHrReferences(); return true; } catch (error) { this.error = messageFromError(error); return false; }
+    },
+    async createEmployee(payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number; designation_id?: number; salary_structure_id?: number; employment_type?: string }): Promise<boolean> {
       this.loading = "create-employee";
       this.error = "";
       try {
@@ -1374,7 +1391,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async updateEmployee(employeeId: number, payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number }): Promise<boolean> {
+    async updateEmployee(employeeId: number, payload: { name: string; email?: string; designation?: string; phone?: string; join_date?: string; salary_cents: number; designation_id?: number; salary_structure_id?: number; employment_type?: string }): Promise<boolean> {
       this.loading = `employee-${employeeId}`;
       this.error = "";
       try { await api(`/api/hr/employees/${employeeId}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadEmployees(); return true; }
