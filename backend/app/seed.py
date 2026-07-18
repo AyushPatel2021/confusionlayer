@@ -376,7 +376,9 @@ def backfill_mastery_history(session: Session, weeks: int = 6) -> int:
     DB (it only inserts points that don't already exist). Powers the mastery-over-time
     chart on the student Progress screen; the values are synthetic demo history.
     """
-    reference = datetime.now(UTC).date()
+    today = datetime.now(UTC).date()
+    # Keep the synthetic timeline anchored to the same weekly snapshots on every seed run.
+    reference = today - timedelta(days=today.weekday())
     records = session.scalars(select(MasteryRecord)).all()
     created = 0
     for record in records:
