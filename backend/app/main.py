@@ -1269,7 +1269,7 @@ def student_insights(
             concept_id=concept.id,
             title=concept.title,
             chapter_title=chapter.title,
-            effective_mastery=effective_mastery(record),
+            effective_mastery=effective_mastery(record.computed_mastery, days_since_review(record.last_reviewed_at)),
             forecast_risk=risks.get(concept.id),
         )
         for record, concept, chapter in records
