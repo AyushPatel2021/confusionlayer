@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
+import { ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 
 import AppSidebar from "../components/app/AppSidebar.vue";
@@ -116,8 +116,6 @@ async function signOut() {
             <button class="s-focus flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50 md:hidden" title="Open menu" aria-label="Open menu" @click.stop="mobileNavOpen = true"><Menu :size="20" /></button>
             <div class="min-w-0">
               <div class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-ink-500" aria-label="Breadcrumb">
-                <button class="s-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-primary-50 hover:text-primary-700" title="Back" aria-label="Back" @click="router.back()"><ArrowLeft :size="15" /></button>
-                <button class="s-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-primary-50 hover:text-primary-700" title="Forward" aria-label="Forward" @click="router.forward()"><ArrowRight :size="15" /></button>
                 <template v-for="(item, index) in breadcrumbItems" :key="item.to">
                   <ChevronRight v-if="index" :size="14" class="shrink-0 text-ink-400" aria-hidden="true" />
                   <RouterLink v-if="index < breadcrumbItems.length - 1" :to="item.to" class="max-w-28 truncate hover:text-primary-700">{{ item.label }}</RouterLink>
