@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Chart from "chart.js/auto";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 
 import SEmptyState from "../../components/ui/SEmptyState.vue";
@@ -12,6 +12,20 @@ import { useSessionStore } from "../../stores/session";
 const session = useSessionStore();
 const canvas = ref<HTMLCanvasElement | null>(null);
 let chart: Chart | null = null;
+const greeting = computed(() => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+});
+const name = computed(() => session.user?.name || (session.user?.role === "student" ? "Learner" : "there"));
+const nextAction = computed(() => {
+  if (session.isStudent) return { to: "/app/learn", label: "Continue learning", text: "Start with an unlocked topic and build on your current mastery." };
+  if (session.user?.role === "teacher") return { to: "/app/teacher/forecast", label: "Review forecast brief", text: "Check the concepts likely to need extra attention before your next class." };
+  if (session.isParent) return { to: "/app/family", label: "View family summary", text: "Review your child’s learning progress and current school updates." };
+  if (session.isOrgAdmin) return { to: "/app/classrooms", label: "Review classrooms", text: "Make sure every active class has a teacher, subject, and enrolled students." };
+  return { to: "/app/dashboard", label: "Review workspace", text: "Check the current work that needs attention today." };
+});
 
 onMounted(async () => {
   await session.loadDashboard();
@@ -33,7 +47,7 @@ function renderChart() {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Workspace" :title="session.dashboard?.title || 'Overview'" subtitle="The current state of your school and learning work." />
+    <SPageHeader eyebrow="Today" :title="`${greeting}, ${name}`" :subtitle="session.dashboard?.title || 'Your workspace overview'" />
     <SLoadingState v-if="session.loading === 'dashboard' && !session.dashboard" :rows="3" />
     <SErrorState v-else-if="session.error && !session.dashboard" :message="session.error" @retry="session.loadDashboard" />
     <template v-else-if="session.dashboard">
@@ -43,6 +57,13 @@ function renderChart() {
           <dd class="mt-2 font-display text-3xl font-semibold text-ink-900">{{ metric.value }}</dd>
         </div>
       </dl>
+      <section class="flex flex-wrap items-center justify-between gap-5 rounded-lg border border-primary-200 bg-primary-50 p-5">
+        <div>
+          <p class="s-eyebrow">Your next step</p>
+          <p class="mt-1 text-sm text-ink-700">{{ nextAction.text }}</p>
+        </div>
+        <RouterLink :to="nextAction.to" class="rounded-md bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500">{{ nextAction.label }}</RouterLink>
+      </section>
       <section class="rounded-lg border border-hairline bg-surface p-5">
         <p class="s-eyebrow">{{ session.dashboard.chart.label }}</p>
         <div class="mt-4 h-64"><canvas ref="canvas" /></div>

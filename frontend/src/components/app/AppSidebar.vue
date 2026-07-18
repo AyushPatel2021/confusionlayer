@@ -6,6 +6,7 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Building2,
+  CalendarClock,
   ChartNoAxesCombined,
   ClipboardCheck,
   Compass,
@@ -13,6 +14,7 @@ import {
   FolderKanban,
   GraduationCap,
   ReceiptText,
+  TrendingUp,
   Users,
   UsersRound,
 } from "@lucide/vue";
@@ -27,10 +29,10 @@ const links = computed(() => {
   if (session.isStudent) {
     return [
       { label: "Learning", items: [
-        { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
+        { to: "/app/dashboard", label: "Overview", icon: Building2 },
         { to: "/app/learn", label: "Learn", icon: BookOpen },
         { to: "/app/explore", label: "Explore", icon: Compass },
-        { to: "/app/progress", label: "My progress", icon: ChartNoAxesCombined },
+        { to: "/app/progress", label: "My progress", icon: TrendingUp },
       ] },
     ];
   }
@@ -41,10 +43,10 @@ const links = computed(() => {
     return [{ label: "Workspace", items: [{ to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined }] }];
   }
   const classroomItems = [
-    { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
+    { to: "/app/dashboard", label: "Overview", icon: Building2 },
     { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
     { to: "/app/curriculum", label: "Curriculum", icon: FolderKanban },
-    { to: "/app/teacher/forecast", label: "Forecast brief", icon: ChartNoAxesCombined },
+    { to: "/app/teacher/forecast", label: "Forecast brief", icon: CalendarClock },
     { to: "/app/teacher/confusion", label: "Confusion brief", icon: AlertTriangle },
   ];
   const groups = [{ label: "Teaching", items: classroomItems }];

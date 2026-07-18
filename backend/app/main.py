@@ -58,6 +58,7 @@ from app.models import (
     ClassroomStudent,
     Concept,
     ConfusionBrief,
+    ForecastRecord,
     Employee,
     FeeStructure,
     GuardianLink,
@@ -1568,7 +1569,20 @@ def dashboard(current_user: User = Depends(get_current_user), db: Session = Depe
     if current_user.role == "teacher" and current_user.teacher_id:
         classrooms = db.scalars(select(Classroom).where(Classroom.teacher_id == current_user.teacher_id).order_by(Classroom.name)).all()
         student_counts = [len(classroom.students) for classroom in classrooms]
-        risks = [int(db.scalar(select(func.count(ForecastRecord.id)).where(ForecastRecord.classroom_id == classroom.id, ForecastRecord.predicted_difficulty >= 0.6)) or 0) for classroom in classrooms]
+        risks = [
+            int(
+                db.scalar(
+                    select(func.count(ForecastRecord.id)).where(
+                        ForecastRecord.student_id.in_(
+                            select(ClassroomStudent.student_id).where(ClassroomStudent.classroom_id == classroom.id)
+                        ),
+                        ForecastRecord.predicted_difficulty >= 0.6,
+                    )
+                )
+                or 0
+            )
+            for classroom in classrooms
+        ]
         return DashboardResponse(
             role=current_user.role,
             title="Teaching overview",

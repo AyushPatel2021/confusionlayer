@@ -74,6 +74,12 @@ class DashboardClassroomTest(TestCase):
             list_classrooms(current_user=self.teacher, db=self.db)
         self.assertEqual(exc.exception.status_code, 403)
 
+    def test_teacher_dashboard_returns_classroom_metrics(self) -> None:
+        create_classroom(ClassroomCreateRequest(name="10 A", subject_id=self.subject.id, teacher_id=self.teacher.teacher_id), current_user=self.owner, db=self.db)
+        response = dashboard(current_user=self.teacher, db=self.db)
+        self.assertEqual(response.title, "Teaching overview")
+        self.assertEqual(response.metrics[0].value, "1")
+
     def test_owner_edits_and_deletes_classroom(self) -> None:
         classroom = create_classroom(ClassroomCreateRequest(name="10 A", subject_id=self.subject.id, teacher_id=self.teacher.teacher_id), current_user=self.owner, db=self.db)
         updated = update_classroom(classroom.id, ClassroomUpdateRequest(name="10 B", subject_id=self.subject.id, teacher_id=self.teacher.teacher_id), current_user=self.owner, db=self.db)
