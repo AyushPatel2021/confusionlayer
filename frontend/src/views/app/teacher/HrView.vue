@@ -87,7 +87,7 @@ async function run() {
       <ul class="mt-3 space-y-2">
         <li v-for="r in session.payrollRuns" :key="r.id" class="flex items-center justify-between rounded-md border border-hairline bg-surface px-4 py-3 text-sm">
           <span class="font-medium text-ink-900">{{ r.period }}</span>
-          <span class="text-ink-500">{{ r.payslip_count }} payslips | net {{ money(r.total_net_cents) }} <SBadge tone="success">{{ r.status }}</SBadge></span>
+          <span class="flex items-center gap-2 text-ink-500">{{ r.payslip_count }} payslips | net {{ money(r.total_net_cents) }} <SBadge tone="success">{{ r.status }}</SBadge><a :href="`/api/hr/payroll/${r.id}/export.csv`" class="font-semibold text-primary-700 hover:underline">CSV</a><a :href="`/api/hr/payroll/${r.id}/print`" target="_blank" class="font-semibold text-primary-700 hover:underline">Print</a></span>
         </li>
         <li v-if="!session.payrollRuns.length" class="text-sm text-ink-500">No payroll runs yet.</li>
       </ul>

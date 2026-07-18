@@ -47,7 +47,7 @@ function setRole(userId: number, event: Event) {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Settings" title="Members" subtitle="Invite people to your organization and manage their roles." />
+    <SPageHeader eyebrow="Settings" title="Members" subtitle="Invite people to your organization and manage their roles."><template #actions><a href="/api/org/members/export.csv" class="text-sm font-semibold text-primary-700 hover:underline">Export CSV</a></template></SPageHeader>
 
     <form class="flex flex-wrap items-end gap-3 rounded-lg border border-hairline bg-surface p-5" @submit.prevent="invite">
       <label class="flex-1 text-sm">Email<input v-model="email" type="email" class="s-input mt-1" required /></label>

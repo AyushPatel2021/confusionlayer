@@ -1927,6 +1927,17 @@ def change_member_status(user_id: int, payload: ChangeMemberStatusRequest, curre
     return _member_response(member)
 
 
+@app.get("/api/org/members/export.csv")
+def export_members_csv(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    _require_school_owner(current_user, db)
+    members = db.scalars(select(User).where(User.org_id == current_user.org_id).order_by(User.id)).all()
+    stream = io.StringIO(); writer = csv.writer(stream)
+    writer.writerow(["Name", "Email", "Role", "Department", "Status"])
+    for member in members:
+        writer.writerow([member.name or "", member.email, member.role, _member_department(member.role), member.status])
+    return Response(stream.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=slate-members.csv"})
+
+
 @app.get("/api/plans", response_model=list[PlanResponse])
 def list_plans(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[PlanResponse]:
     _require_org_admin(current_user)
@@ -2357,6 +2368,16 @@ def get_payroll_run(run_id: int, current_user: User = Depends(get_current_user),
         status=run.status,
         payslips=[PayslipResponse(id=s.id, employee_name=s.employee_name, gross_cents=s.gross_cents, net_cents=s.net_cents) for s in slips],
     )
+
+
+@app.get("/api/hr/payroll/{run_id}/export.csv")
+def export_payroll_csv(run_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    run = get_payroll_run(run_id, current_user=current_user, db=db)
+    stream = io.StringIO(); writer = csv.writer(stream)
+    writer.writerow(["Payroll period", "Employee", "Gross", "Net"])
+    for slip in run.payslips:
+        writer.writerow([run.period, slip.employee_name, slip.gross_cents, slip.net_cents])
+    return Response(stream.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=slate-payroll-{run.period}.csv"})
 
 
 # ---- M10: Parent portal ----
