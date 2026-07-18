@@ -1117,6 +1117,20 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async updateApplication(id: number, payload: { applicant_name: string; applicant_email?: string; grade?: string; notes?: string }): Promise<boolean> {
+      this.loading = `application-${id}`;
+      this.error = "";
+      try { await api(`/api/admissions/applications/${id}`, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadApplications(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
+    },
+    async deleteApplication(id: number): Promise<boolean> {
+      this.loading = `application-${id}`;
+      this.error = "";
+      try { await api(`/api/admissions/applications/${id}`, { method: "DELETE" }); await this.loadApplications(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
+    },
     async setApplicationStatus(id: number, statusValue: string) {
       this.loading = `application-${id}`;
       this.error = "";

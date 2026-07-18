@@ -1876,6 +1876,28 @@ def create_application(payload: ApplicationCreateRequest, current_user: User = D
     return _application_response(application)
 
 
+@app.patch("/api/admissions/applications/{application_id}", response_model=ApplicationResponse)
+def update_application(application_id: int, payload: ApplicationCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApplicationResponse:
+    application = _owned_application(db, current_user, application_id)
+    application.applicant_name = payload.applicant_name.strip()
+    application.applicant_email = (payload.applicant_email or "").strip() or None
+    application.grade = (payload.grade or "").strip() or None
+    application.notes = payload.notes
+    db.commit()
+    db.refresh(application)
+    return _application_response(application)
+
+
+@app.delete("/api/admissions/applications/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_application(application_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    application = _owned_application(db, current_user, application_id)
+    if application.status == "enrolled":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enrolled applications must be retained")
+    db.delete(application)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/api/admissions/applications/{application_id}/status", response_model=ApplicationResponse)
 def set_application_status(application_id: int, payload: ApplicationStatusRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApplicationResponse:
     application = _owned_application(db, current_user, application_id)
@@ -2022,6 +2044,21 @@ def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(g
     return _invoice_response(invoice, 0)
 
 
+@app.patch("/api/fees/invoices/{invoice_id}", response_model=InvoiceResponse)
+def update_invoice(invoice_id: int, payload: InvoiceCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
+    invoice = _owned_invoice(db, current_user, invoice_id)
+    if invoice.voided or db.scalar(select(func.count(Payment.id)).where(Payment.invoice_id == invoice.id)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only unpaid active invoices can be edited")
+    invoice.student_id = payload.student_id
+    invoice.recipient_name = payload.recipient_name.strip()
+    invoice.description = (payload.description or "").strip() or None
+    invoice.amount_cents = payload.amount_cents
+    invoice.due_date = payload.due_date
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_response(invoice, 0)
+
+
 @app.post("/api/fees/invoices/{invoice_id}/payments", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 def record_payment(invoice_id: int, payload: PaymentCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
     invoice = _owned_invoice(db, current_user, invoice_id)
@@ -2076,6 +2113,22 @@ def create_employee(payload: EmployeeCreateRequest, current_user: User = Depends
         salary_cents=payload.salary_cents,
     )
     db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+
+
+@app.patch("/api/hr/employees/{employee_id}", response_model=EmployeeResponse)
+def update_employee(employee_id: int, payload: EmployeeCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> EmployeeResponse:
+    _require_roles(current_user, HR_ROLES)
+    _require_module(db, current_user, "hr")
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    employee.name = payload.name.strip()
+    employee.email = (payload.email or "").strip() or None
+    employee.designation = (payload.designation or "").strip() or None
+    employee.salary_cents = payload.salary_cents
     db.commit()
     db.refresh(employee)
     return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)

@@ -10,6 +10,7 @@ import { useSessionStore, type AdmissionApplication } from "../../../stores/sess
 const session = useSessionStore();
 const showForm = ref(false);
 const form = ref({ applicant_name: "", applicant_email: "", grade: "", notes: "" });
+const editingId = ref<number | null>(null);
 
 const columns = [
   { key: "applied", label: "Applied", tone: "neutral" as const },
@@ -26,10 +27,22 @@ function byStatus(status: string): AdmissionApplication[] {
 }
 
 async function submit() {
-  if (await session.createApplication({ ...form.value })) {
+  const saved = editingId.value
+    ? await session.updateApplication(editingId.value, { ...form.value })
+    : await session.createApplication({ ...form.value });
+  if (saved) {
     form.value = { applicant_name: "", applicant_email: "", grade: "", notes: "" };
+    editingId.value = null;
     showForm.value = false;
   }
+}
+function edit(app: AdmissionApplication) {
+  editingId.value = app.id;
+  form.value = { applicant_name: app.applicant_name, applicant_email: app.applicant_email || "", grade: app.grade || "", notes: app.notes || "" };
+  showForm.value = true;
+}
+async function remove(app: AdmissionApplication) {
+  if (window.confirm(`Delete ${app.applicant_name}'s application?`)) await session.deleteApplication(app.id);
 }
 </script>
 
@@ -48,7 +61,7 @@ async function submit() {
       <label class="text-sm">Notes<input v-model="form.notes" class="s-input mt-1" /></label>
       <div class="sm:col-span-2">
         <SButton type="submit" variant="primary" :disabled="!form.applicant_name.trim() || session.loading === 'create-application'">
-          {{ session.loading === "create-application" ? "Adding..." : "Add application" }}
+          {{ session.loading === "create-application" ? "Adding..." : editingId ? "Save application" : "Add application" }}
         </SButton>
       </div>
     </form>
@@ -67,6 +80,8 @@ async function submit() {
             <p v-if="app.grade" class="text-xs text-ink-500">Grade {{ app.grade }}</p>
             <p v-if="app.applicant_email" class="truncate text-xs text-ink-500">{{ app.applicant_email }}</p>
             <div class="mt-3 flex flex-wrap gap-2">
+              <SButton v-if="app.status !== 'enrolled'" variant="ghost" @click="edit(app)">Edit</SButton>
+              <SButton v-if="app.status !== 'enrolled'" variant="ghost" @click="remove(app)">Delete</SButton>
               <SButton v-if="app.status === 'applied'" variant="secondary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'reviewing')">Review</SButton>
               <template v-if="app.status === 'reviewing'">
                 <SButton variant="primary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'accepted')">Accept</SButton>
