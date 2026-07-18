@@ -328,16 +328,13 @@ export interface AdminUsage {
 }
 
 interface AuthResponse {
-  access_token: string;
   user: User;
 }
 
-const tokenKey = "confusionlayer.token";
-
 export const useSessionStore = defineStore("session", {
   state: () => ({
-    token: localStorage.getItem(tokenKey) || "",
     user: null as User | null,
+    authReady: false,
     syllabus: null as Syllabus | null,
     selectedConcept: null as ConceptDetail | null,
     tutorial: null as Tutorial | null,
@@ -379,6 +376,7 @@ export const useSessionStore = defineStore("session", {
     isOwner: (state) => state.user?.role === "owner" || state.user?.role === "admin",
     isParent: (state) => state.user?.role === "parent",
     isPlatformAdmin: (state) => state.user?.role === "platform_admin",
+    isAuthenticated: (state) => !!state.user,
     roleHome: (state) =>
       state.user?.role === "student"
         ? "/app/learn"
@@ -397,9 +395,8 @@ export const useSessionStore = defineStore("session", {
           method: "POST",
           body: JSON.stringify({ role }),
         });
-        this.token = response.access_token;
         this.user = response.user;
-        localStorage.setItem(tokenKey, response.access_token);
+        this.authReady = true;
         this.selectedConcept = null;
         this.tutorial = null;
         this.chatMessages = [];
@@ -419,9 +416,8 @@ export const useSessionStore = defineStore("session", {
       }
     },
     applyAuth(response: AuthResponse) {
-      this.token = response.access_token;
       this.user = response.user;
-      localStorage.setItem(tokenKey, response.access_token);
+      this.authReady = true;
       this.selectedConcept = null;
       this.tutorial = null;
       this.chatMessages = [];
@@ -533,17 +529,16 @@ export const useSessionStore = defineStore("session", {
       }
     },
     async restore() {
-      if (!this.token || this.user) return;
+      if (this.authReady) return;
       this.loading = "restore";
       try {
-        const response = await api<AuthResponse>("/api/auth/me", { token: this.token });
-        this.token = response.access_token;
+        const response = await api<AuthResponse>("/api/auth/me");
         this.user = response.user;
-        localStorage.setItem(tokenKey, response.access_token);
         await this.loadSyllabus();
       } catch {
-        this.logout();
+        void this.logout();
       } finally {
+        this.authReady = true;
         this.loading = "";
       }
     },
@@ -551,7 +546,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "syllabus";
       this.error = "";
       try {
-        this.syllabus = await api<Syllabus>("/api/student/syllabus", { token: this.token });
+        this.syllabus = await api<Syllabus>("/api/student/syllabus", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -565,7 +560,6 @@ export const useSessionStore = defineStore("session", {
       try {
         await api(`/api/teacher/classrooms/${this.syllabus.classroom.id}/chapters/${chapterId}/unlock`, {
           method: "POST",
-          token: this.token,
         });
         await this.loadSyllabus();
       } catch (error) {
@@ -587,7 +581,7 @@ export const useSessionStore = defineStore("session", {
       this.teachBackGrade = null;
       this.activeTool = "tutorial";
       try {
-        this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${conceptId}`, { token: this.token });
+        this.selectedConcept = await api<ConceptDetail>(`/api/concepts/${conceptId}`, { });
       } catch (error) {
         this.selectedConcept = null;
         this.error = messageFromError(error);
@@ -602,7 +596,6 @@ export const useSessionStore = defineStore("session", {
       try {
         this.tutorial = await api<Tutorial>(`/api/concepts/${this.selectedConcept.id}/tutorial`, {
           method: "POST",
-          token: this.token,
           body: JSON.stringify({ reading_level: "Class 10" }),
         });
       } catch (error) {
@@ -621,7 +614,6 @@ export const useSessionStore = defineStore("session", {
       try {
         const response = await api<DoubtChatResponse>(`/api/concepts/${this.selectedConcept.id}/doubt-chat`, {
           method: "POST",
-          token: this.token,
           body: JSON.stringify({
             message: message.trim(),
             history,
@@ -644,7 +636,6 @@ export const useSessionStore = defineStore("session", {
       try {
         this.quizGrade = await api<QuizGrade>(`/api/concepts/${this.selectedConcept.id}/quiz/grade`, {
           method: "POST",
-          token: this.token,
           body: JSON.stringify({
             question: question.trim(),
             student_answer: studentAnswer.trim(),
@@ -665,7 +656,6 @@ export const useSessionStore = defineStore("session", {
       try {
         this.teachBackGrade = await api<TeachBackGrade>(`/api/concepts/${this.selectedConcept.id}/teach-back/grade`, {
           method: "POST",
-          token: this.token,
           body: JSON.stringify({
             student_explanation: studentExplanation.trim(),
             correct_summary: correctSummary.trim(),
@@ -684,7 +674,7 @@ export const useSessionStore = defineStore("session", {
       try {
         this.forecastBrief = await api<ForecastBrief>(
           `/api/teacher/classrooms/${this.syllabus.classroom.id}/forecast-brief`,
-          { token: this.token },
+          { },
         );
       } catch (error) {
         this.error = messageFromError(error);
@@ -699,7 +689,7 @@ export const useSessionStore = defineStore("session", {
       try {
         this.confusionBrief = await api<ConfusionBrief>(
           `/api/teacher/classrooms/${this.syllabus.classroom.id}/confusion-brief`,
-          { token: this.token },
+          { },
         );
       } catch (error) {
         this.error = messageFromError(error);
@@ -714,7 +704,6 @@ export const useSessionStore = defineStore("session", {
       try {
         await api(`/api/teacher/classrooms/${this.syllabus.classroom.id}/forecasts/recompute`, {
           method: "POST",
-          token: this.token,
         });
         await this.loadForecastBrief();
       } catch (error) {
@@ -730,7 +719,7 @@ export const useSessionStore = defineStore("session", {
       try {
         const narrative = await api<BriefNarrative>(
           `/api/teacher/classrooms/${this.syllabus.classroom.id}/forecast-brief/narrative`,
-          { method: "POST", token: this.token, body: JSON.stringify({ concept_id: conceptId }) },
+          { method: "POST", body: JSON.stringify({ concept_id: conceptId }) },
         );
         this.forecastNarratives = { ...this.forecastNarratives, [conceptId]: narrative };
       } catch (error) {
@@ -746,7 +735,7 @@ export const useSessionStore = defineStore("session", {
       try {
         const narrative = await api<BriefNarrative>(
           `/api/teacher/classrooms/${this.syllabus.classroom.id}/confusion-brief/narrative`,
-          { method: "POST", token: this.token, body: JSON.stringify({ concept_id: conceptId }) },
+          { method: "POST", body: JSON.stringify({ concept_id: conceptId }) },
         );
         this.confusionNarratives = { ...this.confusionNarratives, [conceptId]: narrative };
       } catch (error) {
@@ -763,7 +752,6 @@ export const useSessionStore = defineStore("session", {
       try {
         this.selfStartTutorial = await api<Tutorial>("/api/self-start/tutorial", {
           method: "POST",
-          token: this.token,
           body: JSON.stringify({ topic: topic.trim(), reading_level: readingLevel }),
         });
       } catch (error) {
@@ -776,7 +764,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "progress";
       this.error = "";
       try {
-        this.progress = await api<StudentProgress>("/api/student/progress", { token: this.token });
+        this.progress = await api<StudentProgress>("/api/student/progress", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -787,7 +775,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "curriculum";
       this.error = "";
       try {
-        this.curriculumSubjects = await api<CurriculumSubject[]>("/api/curriculum/subjects", { token: this.token });
+        this.curriculumSubjects = await api<CurriculumSubject[]>("/api/curriculum/subjects", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -798,7 +786,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "curriculum-tree";
       this.error = "";
       try {
-        this.curriculumTree = await api<CurriculumTree>(`/api/curriculum/subjects/${subjectId}`, { token: this.token });
+        this.curriculumTree = await api<CurriculumTree>(`/api/curriculum/subjects/${subjectId}`, { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -811,7 +799,6 @@ export const useSessionStore = defineStore("session", {
       try {
         const subject = await api<CurriculumSubject>("/api/curriculum/subjects", {
           method: "POST",
-          token: this.token,
           body: JSON.stringify(payload),
         });
         await this.loadCurriculumSubjects();
@@ -827,7 +814,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "create-chapter";
       this.error = "";
       try {
-        await api(`/api/curriculum/subjects/${subjectId}/chapters`, { method: "POST", token: this.token, body: JSON.stringify({ title }) });
+        await api(`/api/curriculum/subjects/${subjectId}/chapters`, { method: "POST", body: JSON.stringify({ title }) });
         await this.loadSubjectTree(subjectId);
       } catch (error) {
         this.error = messageFromError(error);
@@ -839,7 +826,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `create-concept-${chapterId}`;
       this.error = "";
       try {
-        await api(`/api/curriculum/chapters/${chapterId}/concepts`, { method: "POST", token: this.token, body: JSON.stringify({ title }) });
+        await api(`/api/curriculum/chapters/${chapterId}/concepts`, { method: "POST", body: JSON.stringify({ title }) });
         await this.loadSubjectTree(subjectId);
       } catch (error) {
         this.error = messageFromError(error);
@@ -854,9 +841,7 @@ export const useSessionStore = defineStore("session", {
       try {
         const form = new FormData();
         form.append("file", file);
-        const headers = new Headers();
-        if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
-        const response = await fetch("/api/curriculum/import", { method: "POST", headers, body: form });
+        const response = await fetch("/api/curriculum/import", { method: "POST", body: form, credentials: "same-origin" });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(body.detail || `Import failed with ${response.status}`);
@@ -875,7 +860,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "commit-import";
       this.error = "";
       try {
-        const tree = await api<CurriculumTree>("/api/curriculum/import/commit", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        const tree = await api<CurriculumTree>("/api/curriculum/import/commit", { method: "POST", body: JSON.stringify(payload) });
         this.importDraft = null;
         return tree;
       } catch (error) {
@@ -889,7 +874,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "org";
       this.error = "";
       try {
-        this.org = await api<OrgInfo>("/api/org", { token: this.token });
+        this.org = await api<OrgInfo>("/api/org", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -900,7 +885,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "members";
       this.error = "";
       try {
-        const data = await api<{ members: OrgMember[]; pending: PendingInvite[] }>("/api/org/members", { token: this.token });
+        const data = await api<{ members: OrgMember[]; pending: PendingInvite[] }>("/api/org/members", { });
         this.members = data.members;
         this.pendingInvites = data.pending;
       } catch (error) {
@@ -913,7 +898,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "invite-member";
       this.error = "";
       try {
-        await api("/api/org/invitations", { method: "POST", token: this.token, body: JSON.stringify({ email, role }) });
+        await api("/api/org/invitations", { method: "POST", body: JSON.stringify({ email, role }) });
         await this.loadMembers();
         return true;
       } catch (error) {
@@ -927,7 +912,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `member-role-${userId}`;
       this.error = "";
       try {
-        await api(`/api/org/members/${userId}/role`, { method: "POST", token: this.token, body: JSON.stringify({ role }) });
+        await api(`/api/org/members/${userId}/role`, { method: "POST", body: JSON.stringify({ role }) });
         await this.loadMembers();
       } catch (error) {
         this.error = messageFromError(error);
@@ -939,7 +924,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "plans";
       this.error = "";
       try {
-        this.plans = await api<OrgPlan[]>("/api/plans", { token: this.token });
+        this.plans = await api<OrgPlan[]>("/api/plans", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -950,7 +935,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `plan-${planCode}`;
       this.error = "";
       try {
-        await api("/api/org/subscription", { method: "POST", token: this.token, body: JSON.stringify({ plan_code: planCode }) });
+        await api("/api/org/subscription", { method: "POST", body: JSON.stringify({ plan_code: planCode }) });
         await this.loadOrg();
       } catch (error) {
         this.error = messageFromError(error);
@@ -962,7 +947,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "admissions";
       this.error = "";
       try {
-        this.applications = await api<AdmissionApplication[]>("/api/admissions/applications", { token: this.token });
+        this.applications = await api<AdmissionApplication[]>("/api/admissions/applications", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -973,7 +958,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "create-application";
       this.error = "";
       try {
-        await api("/api/admissions/applications", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await api("/api/admissions/applications", { method: "POST", body: JSON.stringify(payload) });
         await this.loadApplications();
         return true;
       } catch (error) {
@@ -987,7 +972,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `application-${id}`;
       this.error = "";
       try {
-        await api(`/api/admissions/applications/${id}/status`, { method: "POST", token: this.token, body: JSON.stringify({ status: statusValue }) });
+        await api(`/api/admissions/applications/${id}/status`, { method: "POST", body: JSON.stringify({ status: statusValue }) });
         await this.loadApplications();
       } catch (error) {
         this.error = messageFromError(error);
@@ -999,7 +984,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `application-${id}`;
       this.error = "";
       try {
-        await api(`/api/admissions/applications/${id}/enroll`, { method: "POST", token: this.token });
+        await api(`/api/admissions/applications/${id}/enroll`, { method: "POST", });
         await this.loadApplications();
       } catch (error) {
         this.error = messageFromError(error);
@@ -1011,8 +996,8 @@ export const useSessionStore = defineStore("session", {
       this.loading = "fees";
       this.error = "";
       try {
-        this.invoices = await api<Invoice[]>("/api/fees/invoices", { token: this.token });
-        this.feesSummary = await api<FeesSummary>("/api/fees/summary", { token: this.token });
+        this.invoices = await api<Invoice[]>("/api/fees/invoices", { });
+        this.feesSummary = await api<FeesSummary>("/api/fees/summary", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -1023,7 +1008,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "create-invoice";
       this.error = "";
       try {
-        await api("/api/fees/invoices", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await api("/api/fees/invoices", { method: "POST", body: JSON.stringify(payload) });
         await this.loadFees();
         return true;
       } catch (error) {
@@ -1037,7 +1022,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `invoice-${invoiceId}`;
       this.error = "";
       try {
-        await api(`/api/fees/invoices/${invoiceId}/payments`, { method: "POST", token: this.token, body: JSON.stringify({ amount_cents: amountCents, method }) });
+        await api(`/api/fees/invoices/${invoiceId}/payments`, { method: "POST", body: JSON.stringify({ amount_cents: amountCents, method }) });
         await this.loadFees();
       } catch (error) {
         this.error = messageFromError(error);
@@ -1049,7 +1034,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = `invoice-${invoiceId}`;
       this.error = "";
       try {
-        await api(`/api/fees/invoices/${invoiceId}/void`, { method: "POST", token: this.token });
+        await api(`/api/fees/invoices/${invoiceId}/void`, { method: "POST", });
         await this.loadFees();
       } catch (error) {
         this.error = messageFromError(error);
@@ -1061,7 +1046,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "employees";
       this.error = "";
       try {
-        this.employees = await api<Employee[]>("/api/hr/employees", { token: this.token });
+        this.employees = await api<Employee[]>("/api/hr/employees", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -1072,7 +1057,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "create-employee";
       this.error = "";
       try {
-        await api("/api/hr/employees", { method: "POST", token: this.token, body: JSON.stringify(payload) });
+        await api("/api/hr/employees", { method: "POST", body: JSON.stringify(payload) });
         await this.loadEmployees();
         return true;
       } catch (error) {
@@ -1086,7 +1071,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "payroll";
       this.error = "";
       try {
-        this.payrollRuns = await api<PayrollRun[]>("/api/hr/payroll", { token: this.token });
+        this.payrollRuns = await api<PayrollRun[]>("/api/hr/payroll", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -1097,7 +1082,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "run-payroll";
       this.error = "";
       try {
-        await api("/api/hr/payroll", { method: "POST", token: this.token, body: JSON.stringify({ period }) });
+        await api("/api/hr/payroll", { method: "POST", body: JSON.stringify({ period }) });
         await this.loadPayrollRuns();
         return true;
       } catch (error) {
@@ -1111,7 +1096,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "children";
       this.error = "";
       try {
-        this.children = await api<Child[]>("/api/family/children", { token: this.token });
+        this.children = await api<Child[]>("/api/family/children", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -1122,7 +1107,7 @@ export const useSessionStore = defineStore("session", {
       this.loading = "link-guardian";
       this.error = "";
       try {
-        await api("/api/family/links", { method: "POST", token: this.token, body: JSON.stringify({ parent_email: parentEmail, student_id: studentId }) });
+        await api("/api/family/links", { method: "POST", body: JSON.stringify({ parent_email: parentEmail, student_id: studentId }) });
         return true;
       } catch (error) {
         this.error = messageFromError(error);
@@ -1135,17 +1120,17 @@ export const useSessionStore = defineStore("session", {
       this.loading = "admin";
       this.error = "";
       try {
-        this.adminOrgs = await api<AdminOrg[]>("/api/admin/orgs", { token: this.token });
-        this.adminUsage = await api<AdminUsage>("/api/admin/usage", { token: this.token });
+        this.adminOrgs = await api<AdminOrg[]>("/api/admin/orgs", { });
+        this.adminUsage = await api<AdminUsage>("/api/admin/usage", { });
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
         this.loading = "";
       }
     },
-    logout() {
-      this.token = "";
+    async logout() {
       this.user = null;
+      this.authReady = true;
       this.syllabus = null;
       this.selectedConcept = null;
       this.tutorial = null;
@@ -1160,16 +1145,15 @@ export const useSessionStore = defineStore("session", {
       this.selfStartTutorial = null;
       this.progress = null;
       this.error = "";
-      localStorage.removeItem(tokenKey);
+      await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     },
   },
 });
 
-async function api<T>(path: string, options: RequestInit & { token?: string } = {}): Promise<T> {
+async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-  if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed with ${response.status}`);

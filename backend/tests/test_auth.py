@@ -8,7 +8,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-secret-for-auth-unit-tests")
 os.environ.setdefault("AUTH_COOKIE_SECURE", "0")
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -20,6 +20,7 @@ from app.auth import (
     decode_jwt,
     encode_jwt,
     get_or_create_demo_user,
+    get_current_user,
     hash_password,
     normalize_email,
     verify_password,
@@ -111,3 +112,13 @@ class AuthTest(TestCase):
 
     def test_normalize_email(self) -> None:
         self.assertEqual(normalize_email("  USER@Example.COM "), "user@example.com")
+
+    def test_bearer_header_does_not_authenticate_without_cookie(self) -> None:
+        user = create_user(self.db, SignupRequest(email="cookie@example.com", password="password123", role="admin", name="Admin One"))
+        token = create_access_token(user)
+        request = Request({"type": "http", "headers": [(b"authorization", f"Bearer {token}".encode())]})
+
+        with self.assertRaises(HTTPException) as exc:
+            get_current_user(request=request, db=self.db)
+
+        self.assertEqual(exc.exception.status_code, 401)

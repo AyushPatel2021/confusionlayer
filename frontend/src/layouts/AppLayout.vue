@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 
 import AppSidebar from "../components/app/AppSidebar.vue";
@@ -13,22 +14,15 @@ const sidebarCollapsed = ref(false);
 const mobileNavOpen = ref(false);
 const profileOpen = ref(false);
 
-const initials = computed(() => {
-  const n = session.user?.name || session.user?.email || "?";
-  return n.slice(0, 1).toUpperCase();
-});
-const displayName = computed(() => session.user?.name || session.user?.email || "User");
-const displayRole = computed(() => (session.user?.role || "member").replace("_", " "));
+const initials = computed(() => (session.user?.name || "User").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase());
+const displayName = computed(() => session.user?.name || "User");
+const displayRole = computed(() => (session.user?.role || "member").replace(/_/g, " "));
 const pageTitle = computed(() => (typeof route.meta.title === "string" ? route.meta.title : "Workspace"));
-const breadcrumbs = computed(() => {
-  const items = [{ label: "Workspace", to: session.roleHome || "/app" }];
-  if (pageTitle.value !== "Workspace") items.push({ label: pageTitle.value, to: route.fullPath });
-  return items;
-});
+const workspaceName = computed(() => session.user?.org_name || (session.isStudent ? "Learning" : session.isParent ? "Family" : "Workspace"));
+const settingsPath = computed(() => session.user?.role === "owner" && session.user.segment === "school" ? "/app/settings/members" : "/app/settings/billing");
+const canOpenSettings = computed(() => session.user?.role === "owner");
 
-onMounted(() => {
-  void session.restore();
-});
+onMounted(() => void session.restore());
 
 watch(
   () => route.fullPath,
@@ -38,107 +32,99 @@ watch(
   },
 );
 
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+}
+
+function closeProfile(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  if (!target.closest("[data-profile-menu]")) profileOpen.value = false;
+}
+
 async function signOut() {
-  session.logout();
-  router.push("/");
+  await session.logout();
+  await router.push("/");
 }
 </script>
 
 <template>
-  <div class="min-h-screen bg-paper text-ink-900">
+  <div class="min-h-screen bg-paper text-ink-900" @click="closeProfile">
     <aside
       class="fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-hairline bg-surface transition-[width] duration-200 md:flex"
-      :class="sidebarCollapsed ? 'w-24' : 'w-72'"
+      :class="sidebarCollapsed ? 'w-20' : 'w-72'"
     >
-      <div class="flex h-16 items-center justify-between border-b border-hairline px-4">
-        <RouterLink to="/" class="font-display text-xl font-semibold text-ink-900">{{ sidebarCollapsed ? "S" : "Slate" }}</RouterLink>
-        <button class="s-focus rounded-md border border-hairline px-2 py-1 text-xs font-semibold text-ink-600 hover:border-primary-500 hover:text-primary-600" @click="sidebarCollapsed = !sidebarCollapsed">
-          {{ sidebarCollapsed ? "Open" : "Close" }}
-        </button>
+      <div class="flex h-16 items-center border-b border-hairline px-4" :class="sidebarCollapsed ? 'justify-center' : 'justify-between'">
+        <RouterLink to="/app" class="font-display text-xl font-semibold text-ink-900" :title="sidebarCollapsed ? 'Slate workspace' : undefined">
+          {{ sidebarCollapsed ? "S" : "Slate" }}
+        </RouterLink>
+        <button
+          v-if="!sidebarCollapsed"
+          class="s-focus flex h-9 w-9 items-center justify-center rounded-md text-ink-500 hover:bg-primary-50 hover:text-primary-700"
+          title="Collapse sidebar"
+          aria-label="Collapse sidebar"
+          @click.stop="toggleSidebar"
+        ><PanelLeftClose :size="19" /></button>
       </div>
       <div v-if="!sidebarCollapsed" class="border-b border-hairline px-4 py-4">
         <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Workspace</p>
-        <p class="mt-1 truncate text-sm font-medium text-ink-900">{{ session.user?.org_name || "Workspace" }}</p>
+        <p class="mt-1 truncate text-sm font-semibold text-ink-900">{{ workspaceName }}</p>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-5">
         <AppSidebar :compact="sidebarCollapsed" />
       </div>
-      <div class="border-t border-hairline px-4 py-4">
-        <RouterLink to="/" class="text-xs font-medium text-ink-500 hover:text-primary-600">{{ sidebarCollapsed ? "Site" : "Back to site" }}</RouterLink>
+      <div v-if="sidebarCollapsed" class="border-t border-hairline p-3">
+        <button class="s-focus flex h-10 w-full items-center justify-center rounded-md text-ink-500 hover:bg-primary-50 hover:text-primary-700" title="Expand sidebar" aria-label="Expand sidebar" @click.stop="toggleSidebar">
+          <PanelLeftOpen :size="19" />
+        </button>
       </div>
     </aside>
 
-    <div
-      v-if="mobileNavOpen"
-      class="fixed inset-0 z-50 bg-ink-900/40 md:hidden"
-      role="presentation"
-      @click="mobileNavOpen = false"
-    />
-    <aside
-      class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-hairline bg-surface transition-transform duration-200 md:hidden"
-      :class="mobileNavOpen ? 'translate-x-0' : '-translate-x-full'"
-    >
+    <div v-if="mobileNavOpen" class="fixed inset-0 z-50 bg-ink-900/40 md:hidden" role="presentation" @click="mobileNavOpen = false" />
+    <aside class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-hairline bg-surface transition-transform duration-200 md:hidden" :class="mobileNavOpen ? 'translate-x-0' : '-translate-x-full'">
       <div class="flex h-16 items-center justify-between border-b border-hairline px-4">
-        <RouterLink to="/" class="font-display text-xl font-semibold text-ink-900">Slate</RouterLink>
-        <button class="s-focus rounded-md border border-hairline px-3 py-1.5 text-sm font-semibold text-ink-700" @click="mobileNavOpen = false">Close</button>
+        <RouterLink to="/app" class="font-display text-xl font-semibold text-ink-900">Slate</RouterLink>
+        <button class="s-focus flex h-9 w-9 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50" title="Close menu" aria-label="Close menu" @click="mobileNavOpen = false"><X :size="20" /></button>
       </div>
       <div class="border-b border-hairline px-4 py-4">
         <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Workspace</p>
-        <p class="mt-1 truncate text-sm font-medium text-ink-900">{{ session.user?.org_name || "Workspace" }}</p>
+        <p class="mt-1 truncate text-sm font-semibold text-ink-900">{{ workspaceName }}</p>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-        <AppSidebar />
-      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-5"><AppSidebar /></div>
     </aside>
 
-    <div class="min-h-screen transition-[padding] duration-200" :class="sidebarCollapsed ? 'md:pl-24' : 'md:pl-72'">
+    <div class="min-h-screen transition-[padding] duration-200" :class="sidebarCollapsed ? 'md:pl-20' : 'md:pl-72'">
       <header class="sticky top-0 z-30 border-b border-hairline bg-surface/95 backdrop-blur">
         <div class="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <div class="flex min-w-0 items-center gap-3">
-            <button class="s-focus rounded-md border border-hairline px-3 py-1.5 text-sm font-semibold text-ink-700 md:hidden" @click="mobileNavOpen = true">Menu</button>
+            <button class="s-focus flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50 md:hidden" title="Open menu" aria-label="Open menu" @click.stop="mobileNavOpen = true"><Menu :size="20" /></button>
             <div class="min-w-0">
-              <nav class="flex items-center gap-2 text-xs font-medium text-ink-500" aria-label="Breadcrumb">
-                <RouterLink
-                  v-for="(item, i) in breadcrumbs"
-                  :key="`${item.label}-${i}`"
-                  :to="item.to"
-                  class="truncate hover:text-primary-600"
-                >
-                  {{ item.label }}
-                  <span v-if="i < breadcrumbs.length - 1" class="ml-2 text-ink-300">/</span>
-                </RouterLink>
-              </nav>
-              <h1 class="mt-0.5 truncate font-display text-xl font-semibold text-ink-900">{{ pageTitle }}</h1>
+              <p class="truncate text-xs font-medium text-ink-500">{{ workspaceName }}</p>
+              <h1 class="truncate font-display text-xl font-semibold text-ink-900">{{ pageTitle }}</h1>
             </div>
           </div>
 
-          <div class="relative shrink-0">
-            <button class="s-focus flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-primary-50" @click="profileOpen = !profileOpen">
+          <div data-profile-menu class="relative shrink-0">
+            <button class="s-focus flex items-center gap-2 rounded-md p-1.5 hover:bg-primary-50" aria-haspopup="menu" :aria-expanded="profileOpen" @click.stop="profileOpen = !profileOpen">
               <span class="hidden text-right sm:block">
-                <span class="block max-w-44 truncate text-sm font-medium text-ink-900">{{ displayName }}</span>
+                <span class="block max-w-44 truncate text-sm font-semibold text-ink-900">{{ displayName }}</span>
                 <span class="block text-xs capitalize text-ink-500">{{ displayRole }}</span>
               </span>
-              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white">{{ initials }}</span>
+              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">{{ initials }}</span>
+              <ChevronDown :size="16" class="hidden text-ink-500 sm:block" aria-hidden="true" />
             </button>
-            <div
-              v-if="profileOpen"
-              class="absolute right-0 mt-2 w-64 rounded-lg border border-hairline bg-surface p-2 shadow-raised"
-            >
-              <div class="border-b border-hairline px-3 py-3">
+            <div v-if="profileOpen" class="absolute right-0 mt-2 w-56 rounded-md border border-hairline bg-surface p-2 shadow-raised" role="menu">
+              <div class="border-b border-hairline px-3 py-2.5">
                 <p class="truncate text-sm font-semibold text-ink-900">{{ displayName }}</p>
-                <p class="truncate text-xs text-ink-500">{{ session.user?.email }}</p>
                 <p class="mt-1 text-xs capitalize text-ink-500">{{ displayRole }}</p>
               </div>
-              <RouterLink to="/app/settings/members" class="mt-2 block rounded-md px-3 py-2 text-sm font-medium text-ink-700 hover:bg-primary-50 hover:text-primary-600">Settings</RouterLink>
-              <SButton class="mt-1" variant="ghost" block @click="signOut">Sign out</SButton>
+              <RouterLink v-if="canOpenSettings" :to="settingsPath" class="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 hover:bg-primary-50 hover:text-primary-700" role="menuitem"><Settings :size="17" /> Workspace settings</RouterLink>
+              <SButton class="mt-1" variant="ghost" block @click="signOut"><LogOut :size="17" class="mr-2" />Sign out</SButton>
             </div>
           </div>
         </div>
       </header>
 
-      <main class="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-        <RouterView />
-      </main>
+      <main class="min-w-0 px-4 py-6 sm:px-6 lg:px-8"><RouterView /></main>
     </div>
   </div>
 </template>

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lucide/vue": "^1.25.0",
     "@vitejs/plugin-vue": "^5.2.4",
     "chart.js": "^4.5.1",
     "pinia": "^3.0.3",

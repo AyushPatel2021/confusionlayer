@@ -27,24 +27,24 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: "", redirect: () => useSessionStore().roleHome },
       // Student
-      { path: "learn", name: "learn", component: () => import("../views/app/student/LearnView.vue"), meta: { title: "Learn" } },
-      { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue"), meta: { title: "Concept" } },
-      { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue"), meta: { title: "Explore" } },
-      { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue"), meta: { title: "My progress" } },
+      { path: "learn", name: "learn", component: () => import("../views/app/student/LearnView.vue"), meta: { title: "Learn", roles: ["student"] } },
+      { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue"), meta: { title: "Concept", roles: ["student"] } },
+      { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue"), meta: { title: "Explore", roles: ["student"] } },
+      { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue"), meta: { title: "My progress", roles: ["student"] } },
       // Parent
-      { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue"), meta: { title: "Family" } },
+      { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue"), meta: { title: "Family", roles: ["parent"] } },
       // Teacher
-      { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue"), meta: { title: "Classroom" } },
-      { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum" } },
-      { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum" } },
-      { path: "admissions", name: "admissions", component: () => import("../views/app/teacher/AdmissionsView.vue"), meta: { title: "Admissions" } },
-      { path: "fees", name: "fees", component: () => import("../views/app/teacher/FeesView.vue"), meta: { title: "Fees" } },
-      { path: "hr", name: "hr", component: () => import("../views/app/teacher/HrView.vue"), meta: { title: "HR and payroll" } },
+      { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue"), meta: { title: "Classroom", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "admissions", name: "admissions", component: () => import("../views/app/teacher/AdmissionsView.vue"), meta: { title: "Admissions", roles: ["owner", "school_admin", "admin"], segments: ["school"] } },
+      { path: "fees", name: "fees", component: () => import("../views/app/teacher/FeesView.vue"), meta: { title: "Fees", roles: ["owner", "school_admin", "admin"], segments: ["school"] } },
+      { path: "hr", name: "hr", component: () => import("../views/app/teacher/HrView.vue"), meta: { title: "HR and payroll", roles: ["owner", "school_admin", "admin"], segments: ["school"] } },
       // Org settings
-      { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue"), meta: { title: "Members" } },
-      { path: "settings/billing", name: "settings-billing", component: () => import("../views/app/settings/BillingView.vue"), meta: { title: "Plan and billing" } },
-      { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue"), meta: { title: "Forecast brief" } },
-      { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue"), meta: { title: "Confusion brief" } },
+      { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue"), meta: { title: "Members", roles: ["owner"], segments: ["school"] } },
+      { path: "settings/billing", name: "settings-billing", component: () => import("../views/app/settings/BillingView.vue"), meta: { title: "Plan and billing", roles: ["owner"] } },
+      { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue"), meta: { title: "Forecast brief", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue"), meta: { title: "Confusion brief", roles: ["teacher", "owner", "school_admin", "admin"] } },
     ],
   },
   {
@@ -68,11 +68,16 @@ export const router = createRouter({
 
 // Guard scaffolding, structured now, enforced from M2. Reads the session store
 // so flipping meta.requiresAuth on will start gating without further changes.
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const session = useSessionStore();
-  if (to.meta.requiresAuth && !session.token) {
+  if (to.meta.requiresAuth) await session.restore();
+  if (to.meta.requiresAuth && !session.isAuthenticated) {
     return { name: "login", query: { redirect: to.fullPath } };
   }
+  const roles = to.meta.roles as string[] | undefined;
+  const segments = to.meta.segments as string[] | undefined;
+  if (roles && (!session.user || !roles.includes(session.user.role))) return session.roleHome;
+  if (segments && (!session.user || !session.user.segment || !segments.includes(session.user.segment))) return session.roleHome;
   return true;
 });
 

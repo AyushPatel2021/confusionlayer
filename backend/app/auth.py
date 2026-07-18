@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import Depends, HTTPException, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,7 +28,6 @@ _SEGMENT_DEFAULT_PLAN = {"school": "school_free", "institute": "institute_free",
 ACCESS_TOKEN_COOKIE = "access_token"
 JWT_ALGORITHM = "HS256"
 PBKDF2_ITERATIONS = 210_000
-bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class SignupRequest(BaseModel):
@@ -95,8 +93,6 @@ class AuthUserResponse(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     user: AuthUserResponse
 
 
@@ -206,9 +202,8 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> User:
-    token = credentials.credentials if credentials else request.cookies.get(ACCESS_TOKEN_COOKIE)
+    token = request.cookies.get(ACCESS_TOKEN_COOKIE)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 

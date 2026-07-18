@@ -1,11 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
-
 import MarketingCta from "../../components/marketing/MarketingCta.vue";
 import Squiggle from "../../components/marketing/Squiggle.vue";
-
-const timeline = ref<HTMLElement | null>(null);
-const fill = ref(0);
 
 const beats = [
   { title: "The pattern every teacher knows", body: "A class stumbles on today's lesson because a prerequisite from three weeks ago quietly faded." },
@@ -19,25 +14,6 @@ const principles = [
   { title: "Numbers are earned, not guessed", body: "Mastery and forecasts are deterministic formulas. The AI never grades itself." },
   { title: "Privacy by threshold", body: "No misconception is surfaced unless 3+ students share it, never with a name." },
 ];
-
-function onScroll() {
-  const el = timeline.value;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  const vh = window.innerHeight;
-  const progress = ((vh * 0.55 - rect.top) / rect.height) * 100;
-  fill.value = Math.max(0, Math.min(100, progress));
-}
-
-onMounted(() => {
-  onScroll();
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener("scroll", onScroll);
-  window.removeEventListener("resize", onScroll);
-});
 </script>
 
 <template>
@@ -52,18 +28,14 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <!-- Scroll-fill timeline -->
     <section class="mx-auto max-w-content px-6 py-12">
-      <div ref="timeline" class="relative pl-10">
-        <div class="absolute bottom-2 left-[7px] top-2 w-0.5 bg-hairline" aria-hidden="true">
-          <div class="timeline-fill w-full bg-primary-600" :style="{ '--fill': `${fill}%` }" />
-        </div>
-        <div v-for="(beat, i) in beats" :key="beat.title" v-reveal class="relative pb-10" :style="{ transitionDelay: `${i * 60}ms` }">
-          <span class="absolute -left-[34px] top-1 h-4 w-4 rounded-full border-2 border-primary-600 bg-paper" aria-hidden="true" />
+      <ol class="max-w-3xl border-l border-hairline pl-8">
+        <li v-for="(beat, i) in beats" :key="beat.title" v-reveal class="relative pb-10 last:pb-0" :style="{ transitionDelay: `${i * 60}ms` }">
+          <span class="absolute -left-[37px] top-1 h-4 w-4 rounded-full border-2 border-primary-600 bg-paper" aria-hidden="true" />
           <h3 class="font-display text-xl font-semibold text-ink-900">{{ beat.title }}</h3>
           <p class="mt-2 max-w-reading text-base leading-8 text-ink-700">{{ beat.body }}</p>
-        </div>
-      </div>
+        </li>
+      </ol>
     </section>
 
     <!-- Pull quote -->

@@ -286,12 +286,6 @@ button:disabled {
   }
 }
 
-/* Scroll-driven timeline fill (height set via --fill by a scroll composable) */
-.timeline-fill {
-  height: var(--fill, 0%);
-  transition: height 0.1s linear;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .reveal-in,

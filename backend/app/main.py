@@ -595,7 +595,7 @@ def _auth_response(db: Session, user: User, response: Response) -> AuthResponse:
     token = create_access_token(user)
     set_auth_cookie(response, token)
     organization = db.get(Organization, user.org_id) if user.org_id else None
-    return AuthResponse(access_token=token, user=user_response(user, organization))
+    return AuthResponse(user=user_response(user, organization))
 
 
 @app.post("/api/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -603,7 +603,7 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
     user, organization = register_org(db, payload)
     token = create_access_token(user)
     set_auth_cookie(response, token)
-    return AuthResponse(access_token=token, user=user_response(user, organization))
+    return AuthResponse(user=user_response(user, organization))
 
 
 @app.post("/api/auth/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -654,7 +654,7 @@ def invitation_accept(payload: InvitationAcceptRequest, response: Response, db: 
     user, organization = accept_invitation(db, payload.token, payload.password, payload.name)
     token = create_access_token(user)
     set_auth_cookie(response, token)
-    return AuthResponse(access_token=token, user=user_response(user, organization))
+    return AuthResponse(user=user_response(user, organization))
 
 
 @app.post("/api/org/invitations", status_code=status.HTTP_201_CREATED)
@@ -663,11 +663,7 @@ def create_org_invitation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    if current_user.role not in ("owner", "school_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an owner or school admin can invite members")
-    organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
-    if not organization:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No organization for this user")
+    organization = _require_school_owner(current_user, db)
 
     # Plan gating: don't let a student invite push the org past its plan's student cap.
     if payload.role == "student":
@@ -688,9 +684,8 @@ def create_org_invitation(
 
 @app.get("/api/auth/me", response_model=AuthResponse)
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AuthResponse:
-    token = create_access_token(current_user)
     organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
-    return AuthResponse(access_token=token, user=user_response(current_user, organization))
+    return AuthResponse(user=user_response(current_user, organization))
 
 
 @app.post("/api/auth/logout")
@@ -1338,6 +1333,15 @@ def _require_org_admin(user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an owner or school admin can manage the organization")
 
 
+def _require_school_owner(user: User, db: Session) -> Organization:
+    if user.role != "owner" or not user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the school owner can manage members")
+    org = _current_org(db, user)
+    if org.segment != "school":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Member management is available in school workspaces")
+    return org
+
+
 def _current_org(db: Session, user: User) -> Organization:
     org = db.get(Organization, user.org_id) if user.org_id else None
     if not org:
@@ -1378,7 +1382,7 @@ def get_org(current_user: User = Depends(get_current_user), db: Session = Depend
 
 @app.get("/api/org/members", response_model=MembersResponse)
 def list_org_members(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MembersResponse:
-    _require_org_admin(current_user)
+    _require_school_owner(current_user, db)
     members = db.scalars(select(User).where(User.org_id == current_user.org_id).order_by(User.id)).all()
     pending = db.scalars(
         select(Invitation).where(Invitation.org_id == current_user.org_id, Invitation.accepted_at.is_(None)).order_by(Invitation.id)
@@ -1391,7 +1395,7 @@ def list_org_members(current_user: User = Depends(get_current_user), db: Session
 
 @app.post("/api/org/members/{user_id}/role", response_model=MemberResponse)
 def change_member_role(user_id: int, payload: ChangeRoleRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
-    _require_org_admin(current_user)
+    _require_school_owner(current_user, db)
     member = db.get(User, user_id)
     if not member or member.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
