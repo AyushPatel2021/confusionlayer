@@ -16,12 +16,14 @@ from app.auth import RegisterRequest, register_org
 from app.main import (
     EmployeeCreateRequest,
     FeeStructureCreateRequest,
+    FeeStructureApplyRequest,
     InvoiceCreateRequest,
     InvoiceLineItemRequest,
     PaymentCreateRequest,
     PayrollRunCreateRequest,
     create_employee,
     create_fee_structure,
+    apply_fee_structure,
     create_invoice,
     create_payroll_run,
     fee_student_options,
@@ -107,6 +109,20 @@ class FeesHrTest(TestCase):
         with self.assertRaises(HTTPException) as exc:  # institute plan lacks accounting
             create_invoice(InvoiceCreateRequest(recipient_name="x", amount_cents=1), current_user=self.inst_owner, db=self.db)
         self.assertEqual(exc.exception.status_code, 403)
+
+    def test_apply_fee_structure_creates_one_invoice_per_student(self) -> None:
+        students = [Student(name="Asha"), Student(name="Ravi")]
+        self.db.add_all(students)
+        self.db.flush()
+        self.db.add_all([
+            User(org_id=self.org.id, email="asha.apply@gv.test", password_hash="x", role="student", name="Asha", student_id=students[0].id),
+            User(org_id=self.org.id, email="ravi.apply@gv.test", password_hash="x", role="student", name="Ravi", student_id=students[1].id),
+        ])
+        self.db.commit()
+        structure = create_fee_structure(FeeStructureCreateRequest(name="Term 1 tuition", amount_cents=20000), current_user=self.owner, db=self.db)
+        invoices = apply_fee_structure(structure.id, FeeStructureApplyRequest(student_ids=[students[0].id, students[1].id]), current_user=self.owner, db=self.db)
+        self.assertEqual([(invoice.recipient_name, invoice.amount_cents) for invoice in invoices], [("Asha", 20000), ("Ravi", 20000)])
+        self.assertTrue(all(invoice.line_items[0].description == "Term 1 tuition" for invoice in invoices))
 
     def test_invoice_student_link_requires_org_membership(self) -> None:
         student = Student(name="Asha")

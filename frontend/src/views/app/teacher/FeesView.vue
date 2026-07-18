@@ -14,6 +14,10 @@ const emptyForm = () => ({ recipient_name: "", student_id: null as number | null
 const form = ref(emptyForm());
 const editingId = ref<number | null>(null);
 const invoiceTotal = computed(() => form.value.line_items.reduce((total, item) => total + Math.round(parseFloat(item.amount || "0") * 100), 0));
+const showStructureForm = ref(false);
+const structureForm = ref({ name: "", amount: "" });
+const selectedStructureId = ref<number | null>(null);
+const selectedStudentIds = ref<number[]>([]);
 
 onMounted(async () => { await session.loadFees(); await session.loadStudentOptions(); });
 
@@ -39,6 +43,8 @@ function edit(inv: Invoice) { editingId.value = inv.id; form.value = { recipient
 function selectStudent() { const student = session.studentOptions.find((item) => item.id === form.value.student_id); if (student) form.value.recipient_name = student.name; }
 function addLineItem() { form.value.line_items.push({ description: "", amount: "" }); }
 function removeLineItem(index: number) { if (form.value.line_items.length > 1) form.value.line_items.splice(index, 1); }
+async function createStructure() { if (await session.createFeeStructure({ name: structureForm.value.name, amount_cents: Math.round(parseFloat(structureForm.value.amount || "0") * 100) })) { structureForm.value = { name: "", amount: "" }; showStructureForm.value = false; } }
+async function applyStructure() { if (selectedStructureId.value && selectedStudentIds.value.length) await session.applyFeeStructure(selectedStructureId.value, selectedStudentIds.value); }
 
 async function collect(inv: Invoice) {
   const remaining = inv.amount_cents - inv.paid_cents;
@@ -64,6 +70,13 @@ async function collect(inv: Invoice) {
       <div class="rounded-md border border-hairline bg-surface p-4"><p class="text-xs text-ink-500">Outstanding</p><p class="mt-1 font-display text-2xl font-semibold text-accent-600">{{ money(session.feesSummary.outstanding_cents) }}</p></div>
       <div class="rounded-md border border-hairline bg-surface p-4"><p class="text-xs text-ink-500">Invoices</p><p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ session.feesSummary.invoice_count }}</p></div>
     </div>
+
+    <section class="rounded-lg border border-hairline bg-surface p-5">
+      <div class="flex items-center justify-between"><div><p class="s-eyebrow">Fee structures</p><p class="mt-1 text-sm text-ink-500">Apply a standard charge to selected students.</p></div><SButton variant="secondary" @click="showStructureForm = !showStructureForm">{{ showStructureForm ? "Close" : "New structure" }}</SButton></div>
+      <form v-if="showStructureForm" class="mt-4 flex flex-wrap items-end gap-3" @submit.prevent="createStructure"><label class="flex-1 text-sm">Name<input v-model="structureForm.name" class="s-input mt-1" required /></label><label class="text-sm">Amount (₹)<input v-model="structureForm.amount" type="number" min="0" class="s-input mt-1" required /></label><SButton type="submit" variant="primary">Save structure</SButton></form>
+      <div v-if="session.feeStructures.length" class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]"><label class="text-sm">Structure<select v-model="selectedStructureId" class="s-input mt-1"><option :value="null">Choose structure</option><option v-for="structure in session.feeStructures" :key="structure.id" :value="structure.id">{{ structure.name }} · {{ money(structure.amount_cents) }}</option></select></label><fieldset class="text-sm"><legend>Students</legend><div class="mt-1 flex max-h-28 flex-wrap gap-x-4 overflow-auto rounded-md border border-hairline p-2"><label v-for="student in session.studentOptions" :key="student.id" class="flex items-center gap-2"><input v-model="selectedStudentIds" type="checkbox" :value="student.id" />{{ student.name }}</label></div></fieldset><SButton class="self-end" variant="primary" :disabled="!selectedStructureId || !selectedStudentIds.length || session.loading === 'apply-fee-structure'" @click="applyStructure">Apply</SButton></div>
+      <p v-else class="mt-4 text-sm text-ink-500">Create a structure to bill the same fee to several students.</p>
+    </section>
 
     <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-4" @submit.prevent="submit">
       <label class="text-sm">Bill to<input v-model="form.recipient_name" class="s-input mt-1" required /></label>

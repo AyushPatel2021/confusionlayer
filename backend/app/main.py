@@ -577,6 +577,11 @@ class FeeStructureResponse(BaseModel):
     amount_cents: int
 
 
+class FeeStructureApplyRequest(BaseModel):
+    student_ids: list[int] = Field(min_length=1, max_length=200)
+    due_date: date | None = None
+
+
 class InvoiceCreateRequest(BaseModel):
     recipient_name: str = Field(min_length=1, max_length=160)
     amount_cents: int = Field(ge=0)
@@ -2270,6 +2275,25 @@ def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User 
     db.commit()
     db.refresh(structure)
     return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
+
+
+@app.post("/api/fees/structures/{structure_id}/apply", response_model=list[InvoiceResponse], status_code=status.HTTP_201_CREATED)
+def apply_fee_structure(structure_id: int, payload: FeeStructureApplyRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[InvoiceResponse]:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    structure = db.get(FeeStructure, structure_id)
+    if not structure or structure.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fee structure not found")
+    students = [_org_student(db, current_user.org_id or 0, student_id) for student_id in dict.fromkeys(payload.student_ids)]
+    invoices: list[Invoice] = []
+    for student in students:
+        invoice = Invoice(org_id=current_user.org_id, student_id=student.id, recipient_name=student.name, description=structure.name, amount_cents=structure.amount_cents, due_date=payload.due_date)
+        db.add(invoice)
+        db.flush()
+        db.add(InvoiceLineItem(invoice_id=invoice.id, description=structure.name, amount_cents=structure.amount_cents))
+        invoices.append(invoice)
+    db.commit()
+    return [_invoice_response(db, invoice, 0) for invoice in invoices]
 
 
 @app.get("/api/fees/invoices", response_model=list[InvoiceResponse])

@@ -303,6 +303,8 @@ export interface FeesSummary {
   invoice_count: number;
 }
 
+export interface FeeStructure { id: number; name: string; amount_cents: number; }
+
 export interface Employee {
   id: number;
   name: string;
@@ -415,6 +417,7 @@ export const useSessionStore = defineStore("session", {
     applications: [] as AdmissionApplication[],
     invoices: [] as Invoice[],
     feesSummary: null as FeesSummary | null,
+    feeStructures: [] as FeeStructure[],
     employees: [] as Employee[],
     payrollRuns: [] as PayrollRun[],
     children: [] as Child[],
@@ -1252,13 +1255,26 @@ export const useSessionStore = defineStore("session", {
       this.loading = "fees";
       this.error = "";
       try {
-        this.invoices = await api<Invoice[]>("/api/fees/invoices", { });
-        this.feesSummary = await api<FeesSummary>("/api/fees/summary", { });
+        const [invoices, summary, structures] = await Promise.all([api<Invoice[]>("/api/fees/invoices", { }), api<FeesSummary>("/api/fees/summary", { }), api<FeeStructure[]>("/api/fees/structures")]);
+        this.invoices = invoices;
+        this.feesSummary = summary;
+        this.feeStructures = structures;
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
         this.loading = "";
       }
+    },
+    async createFeeStructure(payload: { name: string; amount_cents: number }): Promise<boolean> {
+      try { await api("/api/fees/structures", { method: "POST", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+    },
+    async applyFeeStructure(structureId: number, studentIds: number[]): Promise<boolean> {
+      this.loading = "apply-fee-structure";
+      this.error = "";
+      try { await api(`/api/fees/structures/${structureId}/apply`, { method: "POST", body: JSON.stringify({ student_ids: studentIds }) }); await this.loadFees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
     },
     async createInvoice(payload: { recipient_name: string; amount_cents: number; description?: string; student_id?: number; line_items?: Array<{ description: string; amount_cents: number }> }): Promise<boolean> {
       this.loading = "create-invoice";
