@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import Chart from "chart.js/auto";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import SBadge from "../../components/ui/SBadge.vue";
 import SErrorState from "../../components/ui/SErrorState.vue";
@@ -8,7 +9,26 @@ import SPageHeader from "../../components/ui/SPageHeader.vue";
 import { useSessionStore } from "../../stores/session";
 
 const session = useSessionStore();
-onMounted(() => session.loadAdmin());
+const canvas = ref<HTMLCanvasElement | null>(null);
+let chart: Chart | null = null;
+
+onMounted(async () => {
+  await session.loadAdmin();
+  await nextTick();
+  renderChart();
+});
+onBeforeUnmount(() => chart?.destroy());
+watch(() => session.adminUsage, async () => {
+  await nextTick();
+  renderChart();
+});
+
+function renderChart() {
+  if (!canvas.value || !session.adminUsage) return;
+  chart?.destroy();
+  const entries = Object.entries(session.adminUsage);
+  chart = new Chart(canvas.value, { type: "bar", data: { labels: entries.map(([label]) => label), datasets: [{ data: entries.map(([, value]) => value), backgroundColor: "#0F6E6E", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+}
 </script>
 
 <template>
@@ -25,6 +45,11 @@ onMounted(() => session.loadAdmin());
           <p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ value }}</p>
         </div>
       </div>
+
+      <section v-if="session.adminUsage" class="rounded-lg border border-hairline bg-surface p-5">
+        <p class="s-eyebrow">Platform footprint</p>
+        <div class="mt-4 h-64"><canvas ref="canvas" /></div>
+      </section>
 
       <div class="overflow-hidden rounded-lg border border-hairline bg-surface">
         <table class="w-full text-sm">

@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   BookOpen,
   BriefcaseBusiness,
+  Building2,
   ChartNoAxesCombined,
   ClipboardCheck,
   Compass,
@@ -26,6 +27,7 @@ const links = computed(() => {
   if (session.isStudent) {
     return [
       { label: "Learning", items: [
+        { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
         { to: "/app/learn", label: "Learn", icon: BookOpen },
         { to: "/app/explore", label: "Explore", icon: Compass },
         { to: "/app/progress", label: "My progress", icon: ChartNoAxesCombined },
@@ -33,9 +35,13 @@ const links = computed(() => {
     ];
   }
   if (session.isParent) {
-    return [{ label: "Family", items: [{ to: "/app/family", label: "My family", icon: UsersRound }] }];
+    return [{ label: "Family", items: [{ to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined }, { to: "/app/family", label: "My family", icon: UsersRound }] }];
+  }
+  if (["accountant", "hr"].includes(session.user?.role || "")) {
+    return [{ label: "Workspace", items: [{ to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined }] }];
   }
   const classroomItems = [
+    { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
     { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
     { to: "/app/curriculum", label: "Curriculum", icon: FolderKanban },
     { to: "/app/teacher/forecast", label: "Forecast brief", icon: ChartNoAxesCombined },
@@ -43,6 +49,7 @@ const links = computed(() => {
   ];
   const groups = [{ label: "Teaching", items: classroomItems }];
   if (session.isOrgAdmin && session.user?.segment === "school") {
+    classroomItems.splice(1, 0, { to: "/app/classrooms", label: "Classrooms", icon: Building2 });
     groups.push({ label: "School office", items: [
       { to: "/app/admissions", label: "Admissions", icon: ClipboardCheck },
       { to: "/app/fees", label: "Fees", icon: ReceiptText },

@@ -75,6 +75,7 @@ from app.models import (
     Student,
     Subject,
     Subscription,
+    Teacher,
     TeachBackAttempt,
     User,
 )
@@ -93,6 +94,58 @@ class ClassroomResponse(BaseModel):
     id: int
     name: str
     subject: SubjectResponse
+
+
+class ClassroomMemberResponse(BaseModel):
+    id: int
+    name: str
+
+
+class ManagedClassroomResponse(ClassroomResponse):
+    teacher: ClassroomMemberResponse
+    students: list[ClassroomMemberResponse]
+
+
+class ClassroomCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    subject_id: int
+    teacher_id: int
+
+
+class ClassroomUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    subject_id: int
+    teacher_id: int
+
+
+class ClassroomEnrollmentRequest(BaseModel):
+    student_id: int
+
+
+class ClassroomOptionsResponse(BaseModel):
+    subjects: list[SubjectResponse]
+    teachers: list[ClassroomMemberResponse]
+    students: list[ClassroomMemberResponse]
+
+
+class DashboardMetricResponse(BaseModel):
+    label: str
+    value: str
+    note: str | None = None
+
+
+class DashboardChartResponse(BaseModel):
+    label: str
+    labels: list[str]
+    values: list[float]
+
+
+class DashboardResponse(BaseModel):
+    role: str
+    title: str
+    metrics: list[DashboardMetricResponse]
+    chart: DashboardChartResponse
+    classrooms: list[ManagedClassroomResponse] = Field(default_factory=list)
 
 
 class DemoContextResponse(BaseModel):
@@ -1347,6 +1400,218 @@ def _current_org(db: Session, user: User) -> Organization:
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No organization for this user")
     return org
+
+
+def _require_classroom_manager(user: User, db: Session) -> Organization:
+    if user.role not in {"owner", "school_admin", "admin"} or not user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an owner or school admin can manage classrooms")
+    return _current_org(db, user)
+
+
+def _managed_classroom_response(classroom: Classroom) -> ManagedClassroomResponse:
+    students = sorted((link.student for link in classroom.students), key=lambda student: student.name.lower())
+    return ManagedClassroomResponse(
+        id=classroom.id,
+        name=classroom.name,
+        subject=_subject_response(classroom.subject),
+        teacher=ClassroomMemberResponse(id=classroom.teacher.id, name=classroom.teacher.name),
+        students=[ClassroomMemberResponse(id=student.id, name=student.name) for student in students],
+    )
+
+
+def _org_teacher(db: Session, org_id: int, teacher_id: int) -> Teacher:
+    teacher = db.get(Teacher, teacher_id)
+    user = db.scalar(select(User).where(User.org_id == org_id, User.role == "teacher", User.teacher_id == teacher_id))
+    if not teacher or not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this organization")
+    return teacher
+
+
+def _org_subject(db: Session, org_id: int, subject_id: int) -> Subject:
+    subject = db.get(Subject, subject_id)
+    if not subject or subject.org_id != org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found in this organization")
+    return subject
+
+
+def _org_student(db: Session, org_id: int, student_id: int) -> Student:
+    student = db.get(Student, student_id)
+    member = db.scalar(select(User.id).where(User.org_id == org_id, User.role == "student", User.student_id == student_id))
+    admission = db.scalar(select(AdmissionApplication.id).where(AdmissionApplication.org_id == org_id, AdmissionApplication.student_id == student_id))
+    if not student or (not member and not admission):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in this organization")
+    return student
+
+
+@app.get("/api/classrooms", response_model=list[ManagedClassroomResponse])
+def list_classrooms(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ManagedClassroomResponse]:
+    org = _require_classroom_manager(current_user, db)
+    classrooms = db.scalars(select(Classroom).where(Classroom.org_id == org.id).order_by(Classroom.name)).all()
+    return [_managed_classroom_response(classroom) for classroom in classrooms]
+
+
+@app.get("/api/classrooms/options", response_model=ClassroomOptionsResponse)
+def classroom_options(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ClassroomOptionsResponse:
+    org = _require_classroom_manager(current_user, db)
+    subjects = db.scalars(select(Subject).where(Subject.org_id == org.id).order_by(Subject.name)).all()
+    teachers = db.scalars(select(User).where(User.org_id == org.id, User.role == "teacher", User.teacher_id.is_not(None)).order_by(User.name)).all()
+    students = db.scalars(select(User).where(User.org_id == org.id, User.role == "student", User.student_id.is_not(None)).order_by(User.name)).all()
+    admission_students = db.scalars(select(Student).join(AdmissionApplication, AdmissionApplication.student_id == Student.id).where(AdmissionApplication.org_id == org.id).order_by(Student.name)).all()
+    known_student_ids = {user.student_id for user in students}
+    return ClassroomOptionsResponse(
+        subjects=[_subject_response(subject) for subject in subjects],
+        teachers=[ClassroomMemberResponse(id=user.teacher_id, name=db.get(Teacher, user.teacher_id).name) for user in teachers if user.teacher_id],
+        students=[ClassroomMemberResponse(id=user.student_id, name=db.get(Student, user.student_id).name) for user in students if user.student_id] + [ClassroomMemberResponse(id=student.id, name=student.name) for student in admission_students if student.id not in known_student_ids],
+    )
+
+
+@app.post("/api/classrooms", response_model=ManagedClassroomResponse, status_code=status.HTTP_201_CREATED)
+def create_classroom(payload: ClassroomCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ManagedClassroomResponse:
+    org = _require_classroom_manager(current_user, db)
+    classroom = Classroom(name=payload.name.strip(), org_id=org.id, subject_id=_org_subject(db, org.id, payload.subject_id).id, teacher_id=_org_teacher(db, org.id, payload.teacher_id).id)
+    db.add(classroom)
+    db.commit()
+    db.refresh(classroom)
+    return _managed_classroom_response(classroom)
+
+
+@app.patch("/api/classrooms/{classroom_id}", response_model=ManagedClassroomResponse)
+def update_classroom(classroom_id: int, payload: ClassroomUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ManagedClassroomResponse:
+    org = _require_classroom_manager(current_user, db)
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom or classroom.org_id != org.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    classroom.name = payload.name.strip()
+    classroom.subject_id = _org_subject(db, org.id, payload.subject_id).id
+    classroom.teacher_id = _org_teacher(db, org.id, payload.teacher_id).id
+    db.commit()
+    db.refresh(classroom)
+    return _managed_classroom_response(classroom)
+
+
+@app.delete("/api/classrooms/{classroom_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_classroom(classroom_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    org = _require_classroom_manager(current_user, db)
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom or classroom.org_id != org.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    db.delete(classroom)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/classrooms/{classroom_id}/students", response_model=ManagedClassroomResponse)
+def enroll_classroom_student(classroom_id: int, payload: ClassroomEnrollmentRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ManagedClassroomResponse:
+    org = _require_classroom_manager(current_user, db)
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom or classroom.org_id != org.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    student = _org_student(db, org.id, payload.student_id)
+    if not db.scalar(select(ClassroomStudent.id).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student.id)):
+        db.add(ClassroomStudent(classroom_id=classroom.id, student_id=student.id))
+        db.commit()
+        db.refresh(classroom)
+    return _managed_classroom_response(classroom)
+
+
+@app.delete("/api/classrooms/{classroom_id}/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_classroom_student(classroom_id: int, student_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    org = _require_classroom_manager(current_user, db)
+    classroom = db.get(Classroom, classroom_id)
+    if not classroom or classroom.org_id != org.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    enrollment = db.scalar(select(ClassroomStudent).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student_id))
+    if not enrollment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student is not enrolled in this classroom")
+    db.delete(enrollment)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/dashboard", response_model=DashboardResponse)
+def dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DashboardResponse:
+    if current_user.role == "platform_admin":
+        counts = [
+            int(db.scalar(select(func.count(Organization.id))) or 0),
+            int(db.scalar(select(func.count(User.id))) or 0),
+            int(db.scalar(select(func.count(Student.id))) or 0),
+        ]
+        return DashboardResponse(
+            role=current_user.role,
+            title="Platform overview",
+            metrics=[DashboardMetricResponse(label=label, value=str(value)) for label, value in zip(["Organizations", "Users", "Students"], counts)],
+            chart=DashboardChartResponse(label="Platform records", labels=["Organizations", "Users", "Students"], values=counts),
+        )
+
+    if current_user.role == "parent":
+        children = list_children(current_user=current_user, db=db)
+        return DashboardResponse(
+            role=current_user.role,
+            title="Family overview",
+            metrics=[DashboardMetricResponse(label="Children linked", value=str(len(children)))],
+            chart=DashboardChartResponse(label="Current mastery", labels=[child.name for child in children], values=[round((child.average_mastery or 0) * 100, 1) for child in children]),
+        )
+
+    if current_user.role == "student" and current_user.student_id:
+        progress = student_progress(current_user=current_user, db=db)
+        return DashboardResponse(
+            role=current_user.role,
+            title="Learning overview",
+            metrics=[
+                DashboardMetricResponse(label="Topics", value=str(progress.summary.concept_count)),
+                DashboardMetricResponse(label="Mastered", value=str(progress.summary.mastered_count)),
+                DashboardMetricResponse(label="Average mastery", value=f"{round(progress.summary.average_effective_mastery * 100)}%"),
+            ],
+            chart=DashboardChartResponse(label="Mastery by topic", labels=[concept.concept_title for concept in progress.concepts], values=[round(concept.effective_mastery * 100, 1) for concept in progress.concepts]),
+        )
+
+    if current_user.role == "teacher" and current_user.teacher_id:
+        classrooms = db.scalars(select(Classroom).where(Classroom.teacher_id == current_user.teacher_id).order_by(Classroom.name)).all()
+        student_counts = [len(classroom.students) for classroom in classrooms]
+        risks = [int(db.scalar(select(func.count(ForecastRecord.id)).where(ForecastRecord.classroom_id == classroom.id, ForecastRecord.predicted_difficulty >= 0.6)) or 0) for classroom in classrooms]
+        return DashboardResponse(
+            role=current_user.role,
+            title="Teaching overview",
+            metrics=[
+                DashboardMetricResponse(label="My classrooms", value=str(len(classrooms))),
+                DashboardMetricResponse(label="Students", value=str(sum(student_counts))),
+                DashboardMetricResponse(label="Forecast risks", value=str(sum(risks))),
+            ],
+            chart=DashboardChartResponse(label="Students by classroom", labels=[classroom.name for classroom in classrooms], values=student_counts),
+            classrooms=[_managed_classroom_response(classroom) for classroom in classrooms],
+        )
+
+    if current_user.role in {"accountant", "hr"}:
+        org = _current_org(db, current_user)
+        member_count = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id)) or 0)
+        classroom_count = int(db.scalar(select(func.count(Classroom.id)).where(Classroom.org_id == org.id)) or 0)
+        return DashboardResponse(
+            role=current_user.role,
+            title="Workspace overview",
+            metrics=[DashboardMetricResponse(label="Organization", value=org.name), DashboardMetricResponse(label="Members", value=str(member_count)), DashboardMetricResponse(label="Classrooms", value=str(classroom_count))],
+            chart=DashboardChartResponse(label="Organization records", labels=["Members", "Classrooms"], values=[member_count, classroom_count]),
+        )
+
+    org = _require_org_admin(current_user) or _current_org(db, current_user)
+    classrooms = db.scalars(select(Classroom).where(Classroom.org_id == org.id).order_by(Classroom.name)).all()
+    students = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id, User.role == "student")) or 0)
+    staff = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id, User.role.in_(("teacher", "school_admin", "accountant", "hr")))) or 0)
+    invoices = db.scalars(select(Invoice).where(Invoice.org_id == org.id, Invoice.voided.is_(False))).all()
+    collected = sum(int(db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0) for invoice in invoices)
+    outstanding = sum(max(0, invoice.amount_cents - int(db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0)) for invoice in invoices)
+    admissions = [int(db.scalar(select(func.count(AdmissionApplication.id)).where(AdmissionApplication.org_id == org.id, AdmissionApplication.status == status_value)) or 0) for status_value in ("applied", "reviewing", "accepted", "enrolled")]
+    return DashboardResponse(
+        role=current_user.role,
+        title="School overview",
+        metrics=[
+            DashboardMetricResponse(label="Students", value=str(students)),
+            DashboardMetricResponse(label="Staff", value=str(staff)),
+            DashboardMetricResponse(label="Collected", value=f"INR {collected / 100:,.0f}"),
+            DashboardMetricResponse(label="Outstanding", value=f"INR {outstanding / 100:,.0f}"),
+        ],
+        chart=DashboardChartResponse(label="Admissions funnel", labels=["Applied", "Reviewing", "Accepted", "Enrolled"], values=admissions),
+        classrooms=[_managed_classroom_response(classroom) for classroom in classrooms],
+    )
 
 
 def _plan_response(plan: Plan) -> PlanResponse:

@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { RouterLink, RouterView } from "vue-router";
 
 import SButton from "../components/ui/SButton.vue";
+import { useSessionStore } from "../stores/session";
+
+const session = useSessionStore();
+
+onMounted(() => void session.restore());
 </script>
 
 <template>
@@ -19,8 +25,11 @@ import SButton from "../components/ui/SButton.vue";
           <RouterLink class="link-underline transition-colors hover:text-primary-600" to="/about">About</RouterLink>
         </nav>
         <div class="flex items-center gap-2">
-          <RouterLink to="/login"><SButton variant="ghost">Sign in</SButton></RouterLink>
-          <RouterLink to="/signup"><SButton variant="primary">Get started</SButton></RouterLink>
+          <RouterLink v-if="session.isAuthenticated" :to="session.roleHome"><SButton variant="primary">Open workspace</SButton></RouterLink>
+          <template v-else>
+            <RouterLink to="/login"><SButton variant="ghost">Sign in</SButton></RouterLink>
+            <RouterLink to="/signup"><SButton variant="primary">Get started</SButton></RouterLink>
+          </template>
         </div>
       </div>
     </header>
@@ -42,7 +51,8 @@ import SButton from "../components/ui/SButton.vue";
             <RouterLink class="link-underline hover:text-primary-600" to="/students">Students</RouterLink>
             <RouterLink class="link-underline hover:text-primary-600" to="/pricing">Pricing</RouterLink>
             <RouterLink class="link-underline hover:text-primary-600" to="/about">About</RouterLink>
-            <RouterLink class="link-underline hover:text-primary-600" to="/login">Sign in</RouterLink>
+            <RouterLink v-if="!session.isAuthenticated" class="link-underline hover:text-primary-600" to="/login">Sign in</RouterLink>
+            <RouterLink v-else class="link-underline hover:text-primary-600" :to="session.roleHome">Open workspace</RouterLink>
           </nav>
         </div>
         <p class="mt-8 max-w-reading text-xs leading-5 text-ink-500">

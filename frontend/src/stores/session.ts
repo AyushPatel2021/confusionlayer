@@ -27,14 +27,14 @@ export interface InvitationPreview {
   organization_name: string;
 }
 
-interface Subject {
+export interface Subject {
   id: number;
   name: string;
   board: string;
   class_level: string;
 }
 
-interface Classroom {
+export interface Classroom {
   id: number;
   name: string;
   subject: Subject;
@@ -327,6 +327,30 @@ export interface AdminUsage {
   applications: number;
 }
 
+export interface ClassroomMember {
+  id: number;
+  name: string;
+}
+
+export interface ManagedClassroom extends Classroom {
+  teacher: ClassroomMember;
+  students: ClassroomMember[];
+}
+
+export interface Dashboard {
+  role: string;
+  title: string;
+  metrics: Array<{ label: string; value: string; note: string | null }>;
+  chart: { label: string; labels: string[]; values: number[] };
+  classrooms: ManagedClassroom[];
+}
+
+export interface ClassroomOptions {
+  subjects: Subject[];
+  teachers: ClassroomMember[];
+  students: ClassroomMember[];
+}
+
 interface AuthResponse {
   user: User;
 }
@@ -363,6 +387,9 @@ export const useSessionStore = defineStore("session", {
     children: [] as Child[],
     adminOrgs: [] as AdminOrg[],
     adminUsage: null as AdminUsage | null,
+    dashboard: null as Dashboard | null,
+    classrooms: [] as ManagedClassroom[],
+    classroomOptions: null as ClassroomOptions | null,
     loading: "",
     error: "",
   }),
@@ -378,13 +405,7 @@ export const useSessionStore = defineStore("session", {
     isPlatformAdmin: (state) => state.user?.role === "platform_admin",
     isAuthenticated: (state) => !!state.user,
     roleHome: (state) =>
-      state.user?.role === "student"
-        ? "/app/learn"
-        : state.user?.role === "parent"
-          ? "/app/family"
-          : state.user?.role === "platform_admin"
-            ? "/admin"
-            : "/app/teacher",
+      state.user?.role === "platform_admin" ? "/admin" : "/app/dashboard",
   },
   actions: {
     async demoLogin(role: "teacher" | "student") {
@@ -547,6 +568,101 @@ export const useSessionStore = defineStore("session", {
       this.error = "";
       try {
         this.syllabus = await api<Syllabus>("/api/student/syllabus", { });
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadDashboard() {
+      this.loading = "dashboard";
+      this.error = "";
+      try {
+        this.dashboard = await api<Dashboard>("/api/dashboard");
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadClassrooms() {
+      this.loading = "classrooms";
+      this.error = "";
+      try {
+        this.classrooms = await api<ManagedClassroom[]>("/api/classrooms");
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async loadClassroomOptions() {
+      try {
+        this.classroomOptions = await api<ClassroomOptions>("/api/classrooms/options");
+      } catch (error) {
+        this.error = messageFromError(error);
+      }
+    },
+    async createClassroom(payload: { name: string; subject_id: number; teacher_id: number }): Promise<boolean> {
+      this.loading = "create-classroom";
+      this.error = "";
+      try {
+        await api("/api/classrooms", { method: "POST", body: JSON.stringify(payload) });
+        await this.loadClassrooms();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async updateClassroom(classroomId: number, payload: { name: string; subject_id: number; teacher_id: number }): Promise<boolean> {
+      this.loading = `update-classroom-${classroomId}`;
+      this.error = "";
+      try {
+        await api(`/api/classrooms/${classroomId}`, { method: "PATCH", body: JSON.stringify(payload) });
+        await this.loadClassrooms();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async deleteClassroom(classroomId: number): Promise<boolean> {
+      this.loading = `delete-classroom-${classroomId}`;
+      this.error = "";
+      try {
+        await api(`/api/classrooms/${classroomId}`, { method: "DELETE" });
+        await this.loadClassrooms();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async enrollClassroomStudent(classroomId: number, studentId: number) {
+      this.loading = `enroll-${classroomId}`;
+      this.error = "";
+      try {
+        await api(`/api/classrooms/${classroomId}/students`, { method: "POST", body: JSON.stringify({ student_id: studentId }) });
+        await this.loadClassrooms();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async removeClassroomStudent(classroomId: number, studentId: number) {
+      this.loading = `enroll-${classroomId}`;
+      this.error = "";
+      try {
+        await api(`/api/classrooms/${classroomId}/students/${studentId}`, { method: "DELETE" });
+        await this.loadClassrooms();
       } catch (error) {
         this.error = messageFromError(error);
       } finally {

@@ -26,6 +26,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: "Workspace" },
     children: [
       { path: "", redirect: () => useSessionStore().roleHome },
+      { path: "dashboard", name: "dashboard", component: () => import("../views/app/DashboardView.vue"), meta: { title: "Overview", roles: ["owner", "school_admin", "admin", "accountant", "hr", "teacher", "student", "parent"] } },
       // Student
       { path: "learn", name: "learn", component: () => import("../views/app/student/LearnView.vue"), meta: { title: "Learn", roles: ["student"] } },
       { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue"), meta: { title: "Concept", roles: ["student"] } },
@@ -35,6 +36,7 @@ const routes: RouteRecordRaw[] = [
       { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue"), meta: { title: "Family", roles: ["parent"] } },
       // Teacher
       { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue"), meta: { title: "Classroom", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "classrooms", name: "classrooms", component: () => import("../views/app/teacher/ClassroomsView.vue"), meta: { title: "Classrooms", roles: ["owner", "school_admin", "admin"] } },
       { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
       { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
       { path: "admissions", name: "admissions", component: () => import("../views/app/teacher/AdmissionsView.vue"), meta: { title: "Admissions", roles: ["owner", "school_admin", "admin"], segments: ["school"] } },
@@ -70,7 +72,7 @@ export const router = createRouter({
 // so flipping meta.requiresAuth on will start gating without further changes.
 router.beforeEach(async (to) => {
   const session = useSessionStore();
-  if (to.meta.requiresAuth || to.meta.guestOnly) await session.restore();
+  if (!session.authReady) await session.restore();
   if (to.meta.guestOnly && session.isAuthenticated) return session.roleHome;
   if (to.meta.requiresAuth && !session.isAuthenticated) {
     return { name: "login", query: { redirect: to.fullPath } };
