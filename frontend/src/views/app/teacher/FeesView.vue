@@ -46,6 +46,7 @@ async function collect(inv: Invoice) {
   <div class="space-y-8">
     <SPageHeader eyebrow="Fees & accounting" title="Invoices" subtitle="Bill students, record payments, and track dues.">
       <template #actions>
+        <a href="/api/fees/export.csv" class="text-sm font-semibold text-primary-700 hover:underline">Export CSV</a>
         <SButton variant="primary" @click="showForm = !showForm">{{ showForm ? "Close" : "New invoice" }}</SButton>
       </template>
     </SPageHeader>
@@ -84,6 +85,7 @@ async function collect(inv: Invoice) {
               <template v-if="!inv.voided && inv.status !== 'paid'">
                 <SButton v-if="inv.status === 'unpaid'" variant="ghost" @click="edit(inv)">Edit</SButton>
                 <SButton variant="secondary" :disabled="session.loading === `invoice-${inv.id}`" @click="collect(inv)">Record payment</SButton>
+                <a :href="`/api/fees/invoices/${inv.id}/print`" target="_blank" class="text-xs font-semibold text-primary-700 hover:underline">Print</a>
                 <SButton variant="ghost" :disabled="session.loading === `invoice-${inv.id}`" @click="session.voidInvoice(inv.id)">Void</SButton>
               </template>
             </td>

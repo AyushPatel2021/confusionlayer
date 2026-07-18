@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -52,6 +54,8 @@ from app.db import get_db
 from app.forecast import recompute_classroom_forecasts
 from app.models import (
     AdmissionApplication,
+    AttendanceRecord,
+    AuditLog,
     Chapter,
     ChapterUnlock,
     Classroom,
@@ -68,17 +72,23 @@ from app.models import (
     MasteryRecord,
     MisconceptionTaxonomy,
     Organization,
+    Notification,
     Payment,
     PayrollRun,
     Payslip,
     Plan,
     QuizAttempt,
     Student,
+    StudentTransportAssignment,
     Subject,
     Subscription,
     Teacher,
     TeachBackAttempt,
+    TimetableEntry,
+    TransportRoute,
     User,
+    LibraryBook,
+    LibraryLoan,
 )
 
 app = FastAPI(title="Slate API")
@@ -229,6 +239,7 @@ class QuizGradeRequest(BaseModel):
     question: str
     student_answer: str
     rubric: str
+    mode: Literal["quiz", "exam"] = "quiz"
 
 
 class QuizGradeResponse(BaseModel):
@@ -601,6 +612,57 @@ class EmployeeStatusRequest(BaseModel):
 
 class PayrollRunCreateRequest(BaseModel):
     period: str = Field(min_length=1, max_length=20)
+
+
+class OrganizationSettingsRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    logo_url: str | None = Field(default=None, max_length=500)
+    timezone: str = Field(default="Asia/Kolkata", max_length=80)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+
+
+class AttendanceEntryRequest(BaseModel):
+    student_id: int
+    status: Literal["present", "absent", "late", "excused"]
+    note: str | None = Field(default=None, max_length=255)
+
+
+class AttendanceRequest(BaseModel):
+    attendance_date: date
+    entries: list[AttendanceEntryRequest] = Field(min_length=1)
+
+
+class TimetableEntryRequest(BaseModel):
+    classroom_id: int
+    weekday: int = Field(ge=0, le=6)
+    starts_at: str = Field(min_length=5, max_length=5)
+    ends_at: str = Field(min_length=5, max_length=5)
+    room: str | None = Field(default=None, max_length=80)
+
+
+class LibraryBookRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    author: str | None = Field(default=None, max_length=160)
+    isbn: str | None = Field(default=None, max_length=32)
+    copies_total: int = Field(default=1, ge=1)
+
+
+class LibraryLoanRequest(BaseModel):
+    student_id: int
+    due_date: date | None = None
+
+
+class TransportRouteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    vehicle_label: str | None = Field(default=None, max_length=120)
+    driver_name: str | None = Field(default=None, max_length=160)
+    stops: list[str] = Field(default_factory=list)
+
+
+class TransportAssignmentRequest(BaseModel):
+    student_id: int
+    route_id: int
+    stop_name: str | None = Field(default=None, max_length=160)
 
 
 class EmployeeResponse(BaseModel):
@@ -1115,7 +1177,7 @@ def grade_quiz(
         is_correct=grade.is_correct,
         misconception_code=grade.misconception_code,
         confidence=grade.confidence,
-        mode="quiz",
+        mode=payload.mode,
     )
     db.add(attempt)
     db.commit()
@@ -1818,9 +1880,13 @@ def get_org(current_user: User = Depends(get_current_user), db: Session = Depend
 
 
 @app.get("/api/org/members", response_model=MembersResponse)
-def list_org_members(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MembersResponse:
+def list_org_members(q: str = "", offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MembersResponse:
     _require_school_owner(current_user, db)
-    members = db.scalars(select(User).where(User.org_id == current_user.org_id).order_by(User.id)).all()
+    statement = select(User).where(User.org_id == current_user.org_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        statement = statement.where(or_(User.name.ilike(pattern), User.email.ilike(pattern), User.role.ilike(pattern)))
+    members = db.scalars(statement.order_by(User.id).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
     pending = db.scalars(
         select(Invitation).where(Invitation.org_id == current_user.org_id, Invitation.accepted_at.is_(None)).order_by(Invitation.id)
     ).all()
@@ -1925,12 +1991,14 @@ def _owned_application(db: Session, user: User, application_id: int) -> Admissio
 
 
 @app.get("/api/admissions/applications", response_model=list[ApplicationResponse])
-def list_applications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ApplicationResponse]:
+def list_applications(q: str = "", status_filter: str | None = None, offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ApplicationResponse]:
     _require_org_admin(current_user)
     _require_module(db, current_user, "admissions")
-    rows = db.scalars(
-        select(AdmissionApplication).where(AdmissionApplication.org_id == current_user.org_id).order_by(AdmissionApplication.id.desc())
-    ).all()
+    statement = select(AdmissionApplication).where(AdmissionApplication.org_id == current_user.org_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"; statement = statement.where(or_(AdmissionApplication.applicant_name.ilike(pattern), AdmissionApplication.applicant_email.ilike(pattern)))
+    if status_filter: statement = statement.where(AdmissionApplication.status == status_filter)
+    rows = db.scalars(statement.order_by(AdmissionApplication.id.desc()).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
     return [_application_response(row) for row in rows]
 
 
@@ -2094,10 +2162,12 @@ def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User 
 
 
 @app.get("/api/fees/invoices", response_model=list[InvoiceResponse])
-def list_invoices(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[InvoiceResponse]:
+def list_invoices(q: str = "", offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[InvoiceResponse]:
     _require_roles(current_user, FEES_ROLES)
     _require_module(db, current_user, "accounting")
-    invoices = db.scalars(select(Invoice).where(Invoice.org_id == current_user.org_id).order_by(Invoice.id.desc())).all()
+    statement = select(Invoice).where(Invoice.org_id == current_user.org_id)
+    if q.strip(): statement = statement.where(Invoice.recipient_name.ilike(f"%{q.strip()}%"))
+    invoices = db.scalars(statement.order_by(Invoice.id.desc()).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
     paid = _paid_cents_map(db, current_user.org_id)
     return [_invoice_response(inv, paid.get(inv.id, 0)) for inv in invoices]
 
@@ -2170,10 +2240,13 @@ def fees_summary(current_user: User = Depends(get_current_user), db: Session = D
 
 
 @app.get("/api/hr/employees", response_model=list[EmployeeResponse])
-def list_employees(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[EmployeeResponse]:
+def list_employees(q: str = "", offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[EmployeeResponse]:
     _require_roles(current_user, HR_ROLES)
     _require_module(db, current_user, "hr")
-    rows = db.scalars(select(Employee).where(Employee.org_id == current_user.org_id).order_by(Employee.id)).all()
+    statement = select(Employee).where(Employee.org_id == current_user.org_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"; statement = statement.where(or_(Employee.name.ilike(pattern), Employee.email.ilike(pattern), Employee.designation.ilike(pattern)))
+    rows = db.scalars(statement.order_by(Employee.id).offset(max(0, offset)).limit(max(1, min(limit, 200)))).all()
     return [EmployeeResponse(id=e.id, name=e.name, email=e.email, designation=e.designation, salary_cents=e.salary_cents, status=e.status) for e in rows]
 
 
@@ -2445,3 +2518,231 @@ def _classroom_response(classroom: Classroom) -> ClassroomResponse:
 
 def _subject_response(subject: Subject) -> SubjectResponse:
     return SubjectResponse(id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level)
+
+
+# ---- Phase 3: workspace utilities and school operations ----
+
+
+def _require_school_operations(user: User, db: Session, roles: set[str] | None = None) -> Organization:
+    if roles:
+        _require_roles(user, roles)
+    else:
+        _require_org_admin(user)
+    org = _current_org(db, user)
+    if org.segment != "school":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This module is available in school workspaces")
+    return org
+
+
+def _audit(db: Session, user: User, action: str, target: str, metadata: dict[str, object] | None = None) -> None:
+    db.add(AuditLog(org_id=user.org_id, actor_user_id=user.id, action=action, target=target, audit_metadata=metadata or {}))
+
+
+@app.get("/api/org/settings")
+def get_org_settings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+    org = _current_org(db, current_user)
+    return {"id": org.id, "name": org.name, "slug": org.slug, "segment": org.segment, "logo_url": org.logo_url, "timezone": org.timezone, "currency": org.currency}
+
+
+@app.patch("/api/org/settings")
+def update_org_settings(payload: OrganizationSettingsRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+    if current_user.role not in OWNER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the owner can update workspace settings")
+    org = _current_org(db, current_user)
+    org.name = payload.name.strip()
+    org.logo_url = (payload.logo_url or "").strip() or None
+    org.timezone = payload.timezone.strip()
+    org.currency = payload.currency.upper()
+    _audit(db, current_user, "workspace.updated", org.name)
+    db.commit()
+    return get_org_settings(current_user=current_user, db=db)
+
+
+@app.get("/api/search")
+def global_search(q: str = "", limit: int = 8, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, list[dict[str, object]]]:
+    term = q.strip()
+    if len(term) < 2:
+        return {"results": []}
+    limit = max(1, min(limit, 20))
+    pattern = f"%{term}%"
+    results: list[dict[str, object]] = []
+    if current_user.org_id:
+        for member in db.scalars(select(User).where(User.org_id == current_user.org_id, or_(User.name.ilike(pattern), User.email.ilike(pattern))).limit(limit)).all():
+            results.append({"kind": "Member", "title": member.name or member.email, "subtitle": member.role.replace("_", " "), "href": "/app/settings/members"})
+        for student in db.scalars(select(Student).join(User, User.student_id == Student.id).where(User.org_id == current_user.org_id, Student.name.ilike(pattern)).limit(limit)).all():
+            results.append({"kind": "Student", "title": student.name, "subtitle": "Learner record", "href": f"/app/students/{student.id}"})
+        if current_user.role in FEES_ROLES:
+            for invoice in db.scalars(select(Invoice).where(Invoice.org_id == current_user.org_id, Invoice.recipient_name.ilike(pattern)).limit(limit)).all():
+                results.append({"kind": "Invoice", "title": invoice.recipient_name, "subtitle": f"Invoice #{invoice.id}", "href": "/app/fees"})
+        for classroom in db.scalars(select(Classroom).where(Classroom.org_id == current_user.org_id, Classroom.name.ilike(pattern)).limit(limit)).all():
+            results.append({"kind": "Classroom", "title": classroom.name, "subtitle": classroom.subject.name, "href": "/app/teacher"})
+    return {"results": results[:limit]}
+
+
+@app.get("/api/notifications")
+def list_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+    rows = db.scalars(select(Notification).where(Notification.user_id == current_user.id).order_by(Notification.id.desc()).limit(20)).all()
+    return {"unread": sum(1 for row in rows if row.read_at is None), "items": [{"id": row.id, "title": row.title, "body": row.body, "href": row.href, "read": row.read_at is not None, "created_at": row.created_at} for row in rows]}
+
+
+@app.get("/api/activity")
+def activity_feed(limit: int = 30, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    _require_org_admin(current_user)
+    rows = db.scalars(select(AuditLog).where(AuditLog.org_id == current_user.org_id).order_by(AuditLog.id.desc()).limit(max(1, min(limit, 100)))).all()
+    return [{"id": row.id, "action": row.action, "target": row.target, "created_at": row.created_at, "metadata": row.audit_metadata} for row in rows]
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def read_notification(notification_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, bool]:
+    row = db.get(Notification, notification_id)
+    if not row or row.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    row.read_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/fees/export.csv")
+def export_invoices_csv(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    invoices = list_invoices(current_user=current_user, db=db)
+    stream = io.StringIO(); writer = csv.writer(stream)
+    writer.writerow(["Invoice", "Recipient", "Description", "Amount", "Paid", "Status", "Due date"])
+    for invoice in invoices:
+        writer.writerow([invoice.id, invoice.recipient_name, invoice.description or "", invoice.amount_cents, invoice.paid_cents, invoice.status, invoice.due_date or ""])
+    return Response(stream.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=slate-invoices.csv"})
+
+
+@app.get("/api/fees/invoices/{invoice_id}/print")
+def print_invoice(invoice_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    invoice = _owned_invoice(db, current_user, invoice_id)
+    paid = _paid_cents_map(db, invoice.org_id).get(invoice.id, 0)
+    org = _current_org(db, current_user)
+    body = f"<h1>{org.name}</h1><h2>Invoice #{invoice.id}</h2><p><b>Recipient:</b> {invoice.recipient_name}</p><p>{invoice.description or ''}</p><p><b>Amount:</b> {invoice.amount_cents / 100:.2f} {org.currency}</p><p><b>Paid:</b> {paid / 100:.2f} {org.currency}</p><script>window.print()</script>"
+    return Response(body, media_type="text/html")
+
+
+@app.get("/api/hr/payroll/{run_id}/print")
+def print_payroll(run_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    run = get_payroll_run(run_id, current_user=current_user, db=db)
+    org = _current_org(db, current_user)
+    rows = "".join(f"<tr><td>{slip.employee_name}</td><td>{slip.net_cents / 100:.2f} {org.currency}</td></tr>" for slip in run.payslips)
+    return Response(f"<h1>{org.name}</h1><h2>Payroll {run.period}</h2><table><tr><th>Employee</th><th>Net pay</th></tr>{rows}</table><script>window.print()</script>", media_type="text/html")
+
+
+@app.get("/api/students/{student_id}/report-card")
+def student_report_card(student_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+    student = _org_student(db, current_user.org_id or 0, student_id)
+    linked = current_user.role == "parent" and bool(db.scalar(select(GuardianLink.id).where(GuardianLink.parent_user_id == current_user.id, GuardianLink.student_id == student.id)))
+    if current_user.role == "student" and current_user.student_id != student.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this student")
+    if current_user.role not in ORG_ADMIN_ROLES | {"teacher", "student", "parent"} or (current_user.role == "parent" and not linked):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this student")
+    records = db.execute(select(MasteryRecord, Concept, Chapter).join(Concept, Concept.id == MasteryRecord.concept_id).join(Chapter, Chapter.id == Concept.chapter_id).where(MasteryRecord.student_id == student.id).order_by(Chapter.order, Concept.order)).all()
+    invoices = db.scalars(select(Invoice).where(Invoice.student_id == student.id, Invoice.voided.is_(False))).all()
+    paid = _paid_cents_map(db, current_user.org_id or 0)
+    attendance = db.execute(select(AttendanceRecord.status, func.count(AttendanceRecord.id)).where(AttendanceRecord.org_id == current_user.org_id, AttendanceRecord.student_id == student.id).group_by(AttendanceRecord.status)).all()
+    return {"student_id": student.id, "student_name": student.name, "learning": [{"concept": concept.title, "chapter": chapter.title, "mastery": round(effective_mastery(record), 4)} for record, concept, chapter in records], "fees": {"outstanding_cents": sum(max(0, invoice.amount_cents - paid.get(invoice.id, 0)) for invoice in invoices)}, "attendance": {key: value for key, value in attendance}}
+
+
+@app.get("/api/attendance/classrooms/{classroom_id}")
+def list_attendance(classroom_id: int, attendance_date: date = date.today(), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+    classroom = _require_teacher_classroom(db, current_user, classroom_id, "view attendance")
+    rows = db.scalars(select(AttendanceRecord).where(AttendanceRecord.classroom_id == classroom.id, AttendanceRecord.attendance_date == attendance_date)).all()
+    statuses = {row.student_id: row for row in rows}
+    return {"date": attendance_date, "classroom_id": classroom.id, "students": [{"id": link.student.id, "name": link.student.name, "status": statuses.get(link.student.id).status if link.student.id in statuses else None, "note": statuses.get(link.student.id).note if link.student.id in statuses else None} for link in classroom.students]}
+
+
+@app.put("/api/attendance/classrooms/{classroom_id}")
+def save_attendance(classroom_id: int, payload: AttendanceRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    classroom = _require_teacher_classroom(db, current_user, classroom_id, "record attendance")
+    enrolled = {link.student_id for link in classroom.students}
+    for entry in payload.entries:
+        if entry.student_id not in enrolled:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Student is not enrolled in this classroom")
+        row = db.scalar(select(AttendanceRecord).where(AttendanceRecord.classroom_id == classroom.id, AttendanceRecord.student_id == entry.student_id, AttendanceRecord.attendance_date == payload.attendance_date))
+        if row:
+            row.status, row.note, row.recorded_by = entry.status, entry.note, current_user.id
+        else:
+            db.add(AttendanceRecord(org_id=classroom.org_id, classroom_id=classroom.id, student_id=entry.student_id, attendance_date=payload.attendance_date, status=entry.status, note=entry.note, recorded_by=current_user.id))
+    _audit(db, current_user, "attendance.recorded", classroom.name, {"date": payload.attendance_date.isoformat(), "count": len(payload.entries)})
+    db.commit()
+    return {"saved": len(payload.entries)}
+
+
+@app.get("/api/timetable")
+def list_timetable(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    org = _require_school_operations(current_user, db)
+    rows = db.scalars(select(TimetableEntry).where(TimetableEntry.org_id == org.id).order_by(TimetableEntry.weekday, TimetableEntry.starts_at)).all()
+    return [{"id": row.id, "classroom_id": row.classroom_id, "classroom": db.get(Classroom, row.classroom_id).name, "weekday": row.weekday, "starts_at": row.starts_at, "ends_at": row.ends_at, "room": row.room} for row in rows]
+
+
+@app.post("/api/timetable", status_code=status.HTTP_201_CREATED)
+def create_timetable_entry(payload: TimetableEntryRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    org = _require_school_operations(current_user, db)
+    classroom = db.get(Classroom, payload.classroom_id)
+    if not classroom or classroom.org_id != org.id: raise HTTPException(status_code=404, detail="Classroom not found")
+    row = TimetableEntry(org_id=org.id, **payload.model_dump())
+    db.add(row); _audit(db, current_user, "timetable.created", classroom.name); db.commit(); db.refresh(row)
+    return {"id": row.id}
+
+
+@app.delete("/api/timetable/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_timetable_entry(entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    org = _require_school_operations(current_user, db); row = db.get(TimetableEntry, entry_id)
+    if not row or row.org_id != org.id: raise HTTPException(status_code=404, detail="Timetable entry not found")
+    db.delete(row); db.commit(); return Response(status_code=204)
+
+
+@app.get("/api/library")
+def list_library(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    org = _require_school_operations(current_user, db)
+    books = db.scalars(select(LibraryBook).where(LibraryBook.org_id == org.id).order_by(LibraryBook.title)).all()
+    return [{"id": book.id, "title": book.title, "author": book.author, "isbn": book.isbn, "copies_total": book.copies_total, "copies_available": book.copies_total - int(db.scalar(select(func.count(LibraryLoan.id)).where(LibraryLoan.book_id == book.id, LibraryLoan.returned_at.is_(None))) or 0)} for book in books]
+
+
+@app.post("/api/library", status_code=status.HTTP_201_CREATED)
+def create_library_book(payload: LibraryBookRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    org = _require_school_operations(current_user, db); book = LibraryBook(org_id=org.id, **payload.model_dump())
+    db.add(book); _audit(db, current_user, "library.book_added", book.title); db.commit(); db.refresh(book); return {"id": book.id}
+
+
+@app.post("/api/library/{book_id}/loans", status_code=status.HTTP_201_CREATED)
+def loan_library_book(book_id: int, payload: LibraryLoanRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    org = _require_school_operations(current_user, db); book = db.get(LibraryBook, book_id)
+    if not book or book.org_id != org.id: raise HTTPException(status_code=404, detail="Book not found")
+    _org_student(db, org.id, payload.student_id)
+    active = int(db.scalar(select(func.count(LibraryLoan.id)).where(LibraryLoan.book_id == book.id, LibraryLoan.returned_at.is_(None))) or 0)
+    if active >= book.copies_total: raise HTTPException(status_code=400, detail="No copies available")
+    loan = LibraryLoan(org_id=org.id, book_id=book.id, student_id=payload.student_id, due_date=payload.due_date)
+    db.add(loan); db.commit(); return {"id": loan.id}
+
+
+@app.post("/api/library/loans/{loan_id}/return")
+def return_library_book(loan_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, bool]:
+    org = _require_school_operations(current_user, db); loan = db.get(LibraryLoan, loan_id)
+    if not loan or loan.org_id != org.id: raise HTTPException(status_code=404, detail="Loan not found")
+    loan.returned_at = datetime.now(timezone.utc); db.commit(); return {"ok": True}
+
+
+@app.get("/api/transport")
+def list_transport_routes(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    org = _require_school_operations(current_user, db)
+    rows = db.scalars(select(TransportRoute).where(TransportRoute.org_id == org.id).order_by(TransportRoute.name)).all()
+    return [{"id": row.id, "name": row.name, "vehicle_label": row.vehicle_label, "driver_name": row.driver_name, "stops": row.stops, "student_count": int(db.scalar(select(func.count(StudentTransportAssignment.id)).where(StudentTransportAssignment.route_id == row.id)) or 0)} for row in rows]
+
+
+@app.post("/api/transport", status_code=status.HTTP_201_CREATED)
+def create_transport_route(payload: TransportRouteRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    org = _require_school_operations(current_user, db); route = TransportRoute(org_id=org.id, **payload.model_dump())
+    db.add(route); _audit(db, current_user, "transport.route_created", route.name); db.commit(); db.refresh(route); return {"id": route.id}
+
+
+@app.put("/api/transport/assignments")
+def assign_transport(payload: TransportAssignmentRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    org = _require_school_operations(current_user, db); _org_student(db, org.id, payload.student_id)
+    route = db.get(TransportRoute, payload.route_id)
+    if not route or route.org_id != org.id: raise HTTPException(status_code=404, detail="Route not found")
+    assignment = db.scalar(select(StudentTransportAssignment).where(StudentTransportAssignment.student_id == payload.student_id))
+    if assignment: assignment.route_id, assignment.stop_name, assignment.org_id = route.id, payload.stop_name, org.id
+    else: assignment = StudentTransportAssignment(org_id=org.id, student_id=payload.student_id, route_id=route.id, stop_name=payload.stop_name); db.add(assignment)
+    db.commit(); return {"id": assignment.id}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { RouterLink } from "vue-router";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
@@ -49,8 +50,9 @@ const tone = (value: number) => value >= 0.8 ? "success" : value >= 0.6 ? "warni
     <SLoadingState v-if="session.loading === 'student-insights'" :rows="3" />
     <template v-else-if="session.studentInsights">
       <div class="rounded-lg border border-hairline bg-surface p-5">
-        <p class="s-eyebrow">{{ session.studentInsights.student_name }}</p>
+        <div class="flex items-start justify-between gap-3"><div><p class="s-eyebrow">{{ session.studentInsights.student_name }}</p>
         <p class="mt-1 font-display text-3xl font-semibold text-ink-900">{{ mastery(session.studentInsights.average_effective_mastery) }} mastery</p>
+        </div><RouterLink :to="`/app/students/${session.studentInsights.student_id}`" class="text-sm font-semibold text-primary-700 hover:underline">Open learner record</RouterLink></div>
       </div>
       <div class="grid gap-5 lg:grid-cols-2">
         <section class="rounded-lg border border-hairline bg-surface p-5">

@@ -34,11 +34,15 @@ const routes: RouteRecordRaw[] = [
       { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue"), meta: { title: "My progress", roles: ["student"] } },
       { path: "map", name: "confusion-map", component: () => import("../views/app/student/ConfusionMapView.vue"), meta: { title: "Confusion map", roles: ["student"] } },
       { path: "exam-outcome", name: "exam-outcome", component: () => import("../views/app/student/ExamOutcomeView.vue"), meta: { title: "Exam outlook", roles: ["student"] } },
+      { path: "exam-practice", name: "exam-practice", component: () => import("../views/app/student/ExamPracticeView.vue"), meta: { title: "Exam practice", roles: ["student"] } },
       // Parent
       { path: "family", name: "family", component: () => import("../views/app/family/FamilyView.vue"), meta: { title: "Family", roles: ["parent"] } },
       // Teacher
       { path: "teacher", name: "teacher-classroom", component: () => import("../views/app/teacher/ClassroomView.vue"), meta: { title: "Classroom", roles: ["teacher", "owner", "school_admin", "admin"] } },
       { path: "teacher/students", name: "teacher-students", component: () => import("../views/app/teacher/StudentInsightsView.vue"), meta: { title: "Student insights", roles: ["teacher", "owner", "school_admin", "admin"] } },
+      { path: "students/:studentId", name: "student-report", component: () => import("../views/app/teacher/StudentReportView.vue"), meta: { title: "Student record", roles: ["teacher", "owner", "school_admin", "admin", "parent", "student"] } },
+      { path: "attendance", name: "attendance", component: () => import("../views/app/teacher/AttendanceView.vue"), meta: { title: "Attendance", roles: ["teacher", "owner", "school_admin", "admin"], segments: ["school"] } },
+      { path: "operations", name: "operations", component: () => import("../views/app/teacher/OperationsView.vue"), meta: { title: "School operations", roles: ["owner", "school_admin", "admin"], segments: ["school"] } },
       { path: "classrooms", name: "classrooms", component: () => import("../views/app/teacher/ClassroomsView.vue"), meta: { title: "Classrooms", roles: ["owner", "school_admin", "admin"] } },
       { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
       { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum", roles: ["teacher", "owner", "school_admin", "admin"] } },
@@ -48,6 +52,7 @@ const routes: RouteRecordRaw[] = [
       // Org settings
       { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue"), meta: { title: "Members", roles: ["owner"], segments: ["school"] } },
       { path: "settings/billing", name: "settings-billing", component: () => import("../views/app/settings/BillingView.vue"), meta: { title: "Plan and billing", roles: ["owner"] } },
+      { path: "settings/workspace", name: "settings-workspace", component: () => import("../views/app/settings/WorkspaceSettingsView.vue"), meta: { title: "Workspace settings", roles: ["owner"] } },
       { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue"), meta: { title: "Forecast brief", roles: ["teacher", "owner", "school_admin", "admin"] } },
       { path: "teacher/confusion", name: "teacher-confusion", component: () => import("../views/app/teacher/ConfusionBriefView.vue"), meta: { title: "Confusion brief", roles: ["teacher", "owner", "school_admin", "admin"] } },
     ],

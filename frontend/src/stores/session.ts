@@ -356,6 +356,15 @@ export interface Dashboard {
   classrooms: ManagedClassroom[];
 }
 
+export interface OrganizationSettings { id: number; name: string; slug: string; segment: string; logo_url: string | null; timezone: string; currency: string; }
+export interface SearchResult { kind: string; title: string; subtitle: string; href: string; }
+export interface NotificationItem { id: number; title: string; body: string | null; href: string | null; read: boolean; created_at: string; }
+export interface StudentReport { student_id: number; student_name: string; learning: Array<{ concept: string; chapter: string; mastery: number }>; fees: { outstanding_cents: number }; attendance: Record<string, number>; }
+export interface AttendanceStudent { id: number; name: string; status: "present" | "absent" | "late" | "excused" | null; note: string | null; }
+export interface TimetableEntry { id: number; classroom_id: number; classroom: string; weekday: number; starts_at: string; ends_at: string; room: string | null; }
+export interface LibraryBook { id: number; title: string; author: string | null; isbn: string | null; copies_total: number; copies_available: number; }
+export interface TransportRoute { id: number; name: string; vehicle_label: string | null; driver_name: string | null; stops: string[]; student_count: number; }
+
 export interface ClassroomOptions {
   subjects: Subject[];
   teachers: ClassroomMember[];
@@ -403,6 +412,15 @@ export const useSessionStore = defineStore("session", {
     dashboard: null as Dashboard | null,
     classrooms: [] as ManagedClassroom[],
     classroomOptions: null as ClassroomOptions | null,
+    orgSettings: null as OrganizationSettings | null,
+    searchResults: [] as SearchResult[],
+    notifications: [] as NotificationItem[],
+    notificationUnread: 0,
+    studentReport: null as StudentReport | null,
+    attendance: [] as AttendanceStudent[],
+    timetable: [] as TimetableEntry[],
+    libraryBooks: [] as LibraryBook[],
+    transportRoutes: [] as TransportRoute[],
     loading: "",
     error: "",
   }),
@@ -598,6 +616,28 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async searchWorkspace(query: string) {
+      if (query.trim().length < 2) { this.searchResults = []; return; }
+      try { this.searchResults = (await api<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(query.trim())}`)).results; }
+      catch { this.searchResults = []; }
+    },
+    async loadNotifications() {
+      try { const data = await api<{ unread: number; items: NotificationItem[] }>("/api/notifications"); this.notifications = data.items; this.notificationUnread = data.unread; }
+      catch { this.notifications = []; this.notificationUnread = 0; }
+    },
+    async readNotification(id: number) {
+      try { await api(`/api/notifications/${id}/read`, { method: "POST" }); const item = this.notifications.find((row) => row.id === id); if (item && !item.read) { item.read = true; this.notificationUnread = Math.max(0, this.notificationUnread - 1); } } catch { /* non-blocking */ }
+    },
+    async loadOrgSettings() { this.loading = "org-settings"; this.error = ""; try { this.orgSettings = await api<OrganizationSettings>("/api/org/settings"); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
+    async saveOrgSettings(payload: Omit<OrganizationSettings, "id" | "slug" | "segment">): Promise<boolean> { this.loading = "org-settings"; this.error = ""; try { this.orgSettings = await api<OrganizationSettings>("/api/org/settings", { method: "PATCH", body: JSON.stringify(payload) }); if (this.user) this.user.org_name = this.orgSettings.name; return true; } catch (error) { this.error = messageFromError(error); return false; } finally { this.loading = ""; } },
+    async loadStudentReport(studentId: number) { this.loading = "student-report"; this.error = ""; try { this.studentReport = await api<StudentReport>(`/api/students/${studentId}/report-card`); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
+    async loadAttendance(classroomId: number, value: string) { this.loading = "attendance"; this.error = ""; try { this.attendance = (await api<{ students: AttendanceStudent[] }>(`/api/attendance/classrooms/${classroomId}?attendance_date=${value}`)).students; } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
+    async saveAttendance(classroomId: number, attendance_date: string, entries: Array<{ student_id: number; status: string; note?: string | null }>) { this.loading = "attendance"; this.error = ""; try { await api(`/api/attendance/classrooms/${classroomId}`, { method: "PUT", body: JSON.stringify({ attendance_date, entries }) }); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
+    async loadOperations() { this.loading = "operations"; this.error = ""; try { const [timetable, libraryBooks, transportRoutes] = await Promise.all([api<TimetableEntry[]>("/api/timetable"), api<LibraryBook[]>("/api/library"), api<TransportRoute[]>("/api/transport")]); this.timetable = timetable; this.libraryBooks = libraryBooks; this.transportRoutes = transportRoutes; } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
+    async createTimetable(payload: { classroom_id: number; weekday: number; starts_at: string; ends_at: string; room?: string }) { try { await api("/api/timetable", { method: "POST", body: JSON.stringify(payload) }); await this.loadOperations(); } catch (error) { this.error = messageFromError(error); } },
+    async deleteTimetable(id: number) { try { await api(`/api/timetable/${id}`, { method: "DELETE" }); await this.loadOperations(); } catch (error) { this.error = messageFromError(error); } },
+    async createLibraryBook(payload: { title: string; author?: string; isbn?: string; copies_total: number }) { try { await api("/api/library", { method: "POST", body: JSON.stringify(payload) }); await this.loadOperations(); } catch (error) { this.error = messageFromError(error); } },
+    async createTransportRoute(payload: { name: string; vehicle_label?: string; driver_name?: string; stops: string[] }) { try { await api("/api/transport", { method: "POST", body: JSON.stringify(payload) }); await this.loadOperations(); } catch (error) { this.error = messageFromError(error); } },
     async loadClassrooms() {
       this.loading = "classrooms";
       this.error = "";
@@ -757,7 +797,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async submitQuiz(question: string, studentAnswer: string, rubric: string) {
+    async submitQuiz(question: string, studentAnswer: string, rubric: string, mode: "quiz" | "exam" = "quiz") {
       if (!this.selectedConcept || !question.trim() || !studentAnswer.trim() || !rubric.trim()) return;
       this.loading = "quiz";
       this.error = "";
@@ -769,6 +809,7 @@ export const useSessionStore = defineStore("session", {
             question: question.trim(),
             student_answer: studentAnswer.trim(),
             rubric: rubric.trim(),
+            mode,
           }),
         });
       } catch (error) {

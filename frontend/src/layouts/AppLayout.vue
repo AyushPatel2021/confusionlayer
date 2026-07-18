@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
+import { Bell, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, X } from "@lucide/vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 
 import AppSidebar from "../components/app/AppSidebar.vue";
@@ -13,13 +13,16 @@ const router = useRouter();
 const sidebarCollapsed = ref(false);
 const mobileNavOpen = ref(false);
 const profileOpen = ref(false);
+const searchOpen = ref(false);
+const searchQuery = ref("");
+const notificationsOpen = ref(false);
 
 const initials = computed(() => (session.user?.name || "User").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase());
 const displayName = computed(() => session.user?.name || "User");
 const displayRole = computed(() => (session.user?.role || "member").replace(/_/g, " "));
 const pageTitle = computed(() => (typeof route.meta.title === "string" ? route.meta.title : "Workspace"));
 const workspaceName = computed(() => session.user?.org_name || (session.isStudent ? "Learning" : session.isParent ? "Family" : "Workspace"));
-const settingsPath = computed(() => session.user?.role === "owner" && session.user.segment === "school" ? "/app/settings/members" : "/app/settings/billing");
+const settingsPath = computed(() => "/app/settings/workspace");
 const canOpenSettings = computed(() => session.user?.role === "owner");
 const breadcrumbItems = computed(() => {
   const parts = route.path.replace(/^\/app\/?/, "").split("/").filter(Boolean);
@@ -39,19 +42,24 @@ const breadcrumbItems = computed(() => {
   return items;
 });
 
-onMounted(() => void session.restore());
+onMounted(async () => { await session.restore(); if (session.isAuthenticated) await session.loadNotifications(); });
 
 watch(
   () => route.fullPath,
   () => {
     mobileNavOpen.value = false;
     profileOpen.value = false;
+    searchOpen.value = false;
+    notificationsOpen.value = false;
   },
 );
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 }
+
+function openResult(href: string) { searchOpen.value = false; searchQuery.value = ""; void router.push(href); }
+function openNotification(id: number, href: string | null) { void session.readNotification(id); notificationsOpen.value = false; if (href) void router.push(href); }
 
 function closeProfile(event: MouseEvent) {
   const target = event.target as HTMLElement;
@@ -126,6 +134,18 @@ async function signOut() {
             </div>
           </div>
 
+          <div class="flex items-center gap-1 sm:gap-2">
+            <div class="relative">
+              <button class="s-focus flex h-9 w-9 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50" title="Search workspace" aria-label="Search workspace" @click.stop="searchOpen = !searchOpen"><Search :size="19" /></button>
+              <div v-if="searchOpen" class="absolute right-0 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-md border border-hairline bg-surface p-3 shadow-raised">
+                <input v-model="searchQuery" class="s-input" placeholder="Search students, members, invoices..." autofocus @input="session.searchWorkspace(searchQuery)" />
+                <div v-if="searchQuery.length >= 2" class="mt-2 max-h-72 overflow-y-auto"><button v-for="item in session.searchResults" :key="`${item.kind}-${item.title}`" class="block w-full rounded-md px-3 py-2 text-left hover:bg-primary-50" @click="openResult(item.href)"><span class="block text-sm font-semibold text-ink-900">{{ item.title }}</span><span class="text-xs text-ink-500">{{ item.kind }} | {{ item.subtitle }}</span></button><p v-if="!session.searchResults.length" class="px-3 py-3 text-sm text-ink-500">No matching records.</p></div>
+              </div>
+            </div>
+            <div class="relative">
+              <button class="s-focus relative flex h-9 w-9 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50" title="Notifications" aria-label="Notifications" @click.stop="notificationsOpen = !notificationsOpen"><Bell :size="19" /><span v-if="session.notificationUnread" class="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent-600" /></button>
+              <div v-if="notificationsOpen" class="absolute right-0 mt-2 w-80 rounded-md border border-hairline bg-surface p-2 shadow-raised"><p class="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-ink-500">Notifications</p><button v-for="item in session.notifications" :key="item.id" class="block w-full rounded-md px-3 py-2 text-left hover:bg-primary-50" :class="item.read ? 'opacity-70' : ''" @click="openNotification(item.id, item.href)"><span class="block text-sm font-semibold text-ink-900">{{ item.title }}</span><span v-if="item.body" class="block text-xs text-ink-500">{{ item.body }}</span></button><p v-if="!session.notifications.length" class="px-3 py-4 text-sm text-ink-500">You are all caught up.</p></div>
+            </div>
           <div data-profile-menu class="relative shrink-0">
             <button class="s-focus flex items-center gap-2 rounded-md p-1.5 hover:bg-primary-50" aria-haspopup="menu" :aria-expanded="profileOpen" @click.stop="profileOpen = !profileOpen">
               <span class="hidden text-right sm:block">
@@ -143,6 +163,7 @@ async function signOut() {
               <RouterLink v-if="canOpenSettings" :to="settingsPath" class="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 hover:bg-primary-50 hover:text-primary-700" role="menuitem"><Settings :size="17" /> Workspace settings</RouterLink>
               <SButton class="mt-1" variant="ghost" block @click="signOut"><LogOut :size="17" class="mr-2" />Sign out</SButton>
             </div>
+          </div>
           </div>
         </div>
       </header>

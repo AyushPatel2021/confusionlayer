@@ -26,6 +26,7 @@ const concept = computed(() => session.selectedConcept);
 function load() {
   const id = Number(route.params.conceptId);
   if (route.query.tool === "teach_back") session.activeTool = "teach_back";
+  if (route.query.tool === "quiz") session.activeTool = "quiz";
   if (id) void session.loadConceptById(id);
 }
 onMounted(load);
@@ -48,7 +49,7 @@ async function sendDoubt() {
   await session.sendDoubt(message);
 }
 async function submitQuiz() {
-  await session.submitQuiz(quizQuestion.value, quizAnswer.value, quizRubric.value);
+  await session.submitQuiz(quizQuestion.value, quizAnswer.value, quizRubric.value, route.query.mode === "exam" ? "exam" : "quiz");
 }
 async function submitTeachBack() {
   await session.submitTeachBack(teachBackText.value, teachBackSummary.value);

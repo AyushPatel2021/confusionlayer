@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarClock,
+  CalendarCheck,
   ChartNoAxesCombined,
   ClipboardCheck,
   Compass,
@@ -14,6 +15,8 @@ import {
   FolderKanban,
   GraduationCap,
   ReceiptText,
+  Settings,
+  Bus,
   TrendingUp,
   Users,
   UsersRound,
@@ -35,6 +38,7 @@ const links = computed(() => {
         { to: "/app/progress", label: "My progress", icon: TrendingUp },
         { to: "/app/map", label: "Confusion map", icon: AlertTriangle },
         { to: "/app/exam-outcome", label: "Exam outlook", icon: ClipboardCheck },
+        { to: "/app/exam-practice", label: "Exam practice", icon: ClipboardCheck },
       ] },
     ];
   }
@@ -48,6 +52,7 @@ const links = computed(() => {
     { to: "/app/dashboard", label: "Overview", icon: Building2 },
     { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
     { to: "/app/teacher/students", label: "Student insights", icon: UsersRound },
+    { to: "/app/attendance", label: "Attendance", icon: CalendarCheck },
     { to: "/app/curriculum", label: "Curriculum", icon: FolderKanban },
     { to: "/app/teacher/forecast", label: "Forecast brief", icon: CalendarClock },
     { to: "/app/teacher/confusion", label: "Confusion brief", icon: AlertTriangle },
@@ -59,15 +64,17 @@ const links = computed(() => {
       { to: "/app/admissions", label: "Admissions", icon: ClipboardCheck },
       { to: "/app/fees", label: "Fees", icon: ReceiptText },
       { to: "/app/hr", label: "HR & payroll", icon: BriefcaseBusiness },
+      { to: "/app/operations", label: "School operations", icon: Bus },
     ] });
   }
   if (session.user?.role === "owner" && session.user.segment === "school") {
     groups.push({ label: "Workspace", items: [
       { to: "/app/settings/members", label: "Members", icon: Users },
       { to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard },
+      { to: "/app/settings/workspace", label: "Workspace settings", icon: Settings },
     ] });
   } else if (session.user?.role === "owner") {
-    groups.push({ label: "Workspace", items: [{ to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard }] });
+    groups.push({ label: "Workspace", items: [{ to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard }, { to: "/app/settings/workspace", label: "Workspace settings", icon: Settings }] });
   }
   return groups;
 });

@@ -26,6 +26,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(160), nullable=False)
     segment: Mapped[str] = mapped_column(String(20), nullable=False)
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="Asia/Kolkata", server_default="Asia/Kolkata", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", server_default="INR", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
@@ -514,4 +517,98 @@ class Payslip(Base):
     employee_name: Mapped[str] = mapped_column(String(160), nullable=False)
     gross_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     net_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# --- Phase 3: school operations and learner records ---
+
+
+class AttendanceRecord(Base):
+    __tablename__ = "attendance_records"
+    __table_args__ = (
+        CheckConstraint("status IN ('present', 'absent', 'late', 'excused')", name="ck_attendance_status"),
+        UniqueConstraint("classroom_id", "student_id", "attendance_date", name="uq_attendance_classroom_student_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    attendance_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class TimetableEntry(Base):
+    __tablename__ = "timetable_entries"
+    __table_args__ = (CheckConstraint("weekday >= 0 AND weekday <= 6", name="ck_timetable_weekday"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts_at: Mapped[str] = mapped_column(String(5), nullable=False)
+    ends_at: Mapped[str] = mapped_column(String(5), nullable=False)
+    room: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class LibraryBook(Base):
+    __tablename__ = "library_books"
+    __table_args__ = (UniqueConstraint("org_id", "isbn", name="uq_library_book_isbn"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    author: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    isbn: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    copies_total: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LibraryLoan(Base):
+    __tablename__ = "library_loans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    book_id: Mapped[int] = mapped_column(ForeignKey("library_books.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class TransportRoute(Base):
+    __tablename__ = "transport_routes"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_transport_route_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    vehicle_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    driver_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    stops: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
+class StudentTransportAssignment(Base):
+    __tablename__ = "student_transport_assignments"
+    __table_args__ = (UniqueConstraint("student_id", name="uq_student_transport_assignment"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    route_id: Mapped[int] = mapped_column(ForeignKey("transport_routes.id", ondelete="CASCADE"), nullable=False)
+    stop_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    body: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    href: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
