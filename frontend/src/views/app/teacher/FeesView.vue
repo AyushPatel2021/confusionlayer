@@ -5,6 +5,7 @@ import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
+import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import { useSessionStore, type Invoice } from "../../../stores/session";
 
 const session = useSessionStore();
@@ -19,6 +20,8 @@ const structureForm = ref({ name: "", amount: "" });
 const selectedStructureId = ref<number | null>(null);
 const selectedStudentIds = ref<number[]>([]);
 const editingStructureId = ref<number | null>(null);
+const structureToDelete = ref<{ id: number; name: string } | null>(null);
+const ledgerOpen = ref(false);
 
 onMounted(async () => { await session.loadFees(); await session.loadStudentOptions(); });
 
@@ -47,7 +50,8 @@ function removeLineItem(index: number) { if (form.value.line_items.length > 1) f
 async function createStructure() { const payload = { name: structureForm.value.name, amount_cents: Math.round(parseFloat(structureForm.value.amount || "0") * 100) }; const saved = editingStructureId.value ? await session.updateFeeStructure(editingStructureId.value, payload) : await session.createFeeStructure(payload); if (saved) { structureForm.value = { name: "", amount: "" }; editingStructureId.value = null; showStructureForm.value = false; } }
 async function applyStructure() { if (selectedStructureId.value && selectedStudentIds.value.length) await session.applyFeeStructure(selectedStructureId.value, selectedStudentIds.value); }
 function editStructure(structure: { id: number; name: string; amount_cents: number }) { editingStructureId.value = structure.id; structureForm.value = { name: structure.name, amount: String(structure.amount_cents / 100) }; showStructureForm.value = true; }
-async function deleteStructure(structure: { id: number; name: string }) { if (window.confirm(`Delete ${structure.name}? Existing invoices will be kept.`)) await session.deleteFeeStructure(structure.id); }
+async function deleteStructure() { if (structureToDelete.value && await session.deleteFeeStructure(structureToDelete.value.id)) structureToDelete.value = null; }
+async function openLedger(studentId: number | null) { if (studentId) { await session.loadFeeLedger(studentId); ledgerOpen.value = true; } }
 
 async function collect(inv: Invoice) {
   const remaining = inv.amount_cents - inv.paid_cents;
@@ -79,7 +83,7 @@ async function collect(inv: Invoice) {
       <form v-if="showStructureForm" class="mt-4 flex flex-wrap items-end gap-3" @submit.prevent="createStructure"><label class="flex-1 text-sm">Name<input v-model="structureForm.name" class="s-input mt-1" required /></label><label class="text-sm">Amount (₹)<input v-model="structureForm.amount" type="number" min="0" class="s-input mt-1" required /></label><SButton type="submit" variant="primary">{{ editingStructureId ? "Save changes" : "Save structure" }}</SButton></form>
       <div v-if="session.feeStructures.length" class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]"><label class="text-sm">Structure<select v-model="selectedStructureId" class="s-input mt-1"><option :value="null">Choose structure</option><option v-for="structure in session.feeStructures" :key="structure.id" :value="structure.id">{{ structure.name }} · {{ money(structure.amount_cents) }}</option></select></label><fieldset class="text-sm"><legend>Students</legend><div class="mt-1 flex max-h-28 flex-wrap gap-x-4 overflow-auto rounded-md border border-hairline p-2"><label v-for="student in session.studentOptions" :key="student.id" class="flex items-center gap-2"><input v-model="selectedStudentIds" type="checkbox" :value="student.id" />{{ student.name }}</label></div></fieldset><SButton class="self-end" variant="primary" :disabled="!selectedStructureId || !selectedStudentIds.length || session.loading === 'apply-fee-structure'" @click="applyStructure">Apply</SButton></div>
       <p v-else class="mt-4 text-sm text-ink-500">Create a structure to bill the same fee to several students.</p>
-      <ul v-if="session.feeStructures.length" class="mt-4 divide-y divide-hairline border-t border-hairline"><li v-for="structure in session.feeStructures" :key="structure.id" class="flex items-center justify-between py-2 text-sm"><span>{{ structure.name }} <span class="text-ink-500">{{ money(structure.amount_cents) }}</span></span><span class="flex gap-1"><SButton variant="ghost" @click="editStructure(structure)">Edit</SButton><SButton variant="ghost" @click="deleteStructure(structure)">Delete</SButton></span></li></ul>
+      <ul v-if="session.feeStructures.length" class="mt-4 divide-y divide-hairline border-t border-hairline"><li v-for="structure in session.feeStructures" :key="structure.id" class="flex items-center justify-between py-2 text-sm"><span>{{ structure.name }} <span class="text-ink-500">{{ money(structure.amount_cents) }}</span></span><span class="flex gap-1"><SButton variant="ghost" @click="editStructure(structure)">Edit</SButton><SButton variant="ghost" @click="structureToDelete = structure">Delete</SButton></span></li></ul>
     </section>
 
     <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-4" @submit.prevent="submit">
@@ -99,7 +103,7 @@ async function collect(inv: Invoice) {
         <tbody class="divide-y divide-hairline">
           <tr v-for="inv in session.invoices" :key="inv.id">
             <td class="px-4 py-3">
-              <p class="font-medium text-ink-900">{{ inv.recipient_name }}</p>
+              <button v-if="inv.student_id" type="button" class="font-medium text-ink-900 hover:text-primary-700 hover:underline" @click="openLedger(inv.student_id)">{{ inv.recipient_name }}</button><p v-else class="font-medium text-ink-900">{{ inv.recipient_name }}</p>
               <p v-if="inv.description" class="text-xs text-ink-500">{{ inv.description }}</p>
             </td>
             <td class="px-4 py-3 text-ink-700">{{ money(inv.amount_cents) }}</td>
@@ -118,5 +122,7 @@ async function collect(inv: Invoice) {
       </table>
     </div>
     <p v-else class="text-sm text-ink-500">No invoices yet.</p>
+    <section v-if="ledgerOpen && session.feeLedger" class="rounded-lg border border-hairline bg-surface p-5"><div class="flex items-start justify-between gap-4"><div><p class="s-eyebrow">Learner ledger</p><h2 class="mt-1 font-display text-xl font-semibold text-ink-900">{{ session.feeLedger.student_name }}</h2><p class="mt-1 text-sm text-ink-500">Outstanding {{ money(session.feeLedger.outstanding_cents) }}</p></div><SButton variant="ghost" @click="ledgerOpen = false">Close</SButton></div><div class="mt-4 overflow-auto"><table class="w-full text-sm"><thead class="text-left text-xs uppercase text-ink-500"><tr><th class="pb-2">Date</th><th class="pb-2">Reference</th><th class="pb-2">Debit</th><th class="pb-2">Credit</th><th class="pb-2">Balance</th></tr></thead><tbody class="divide-y divide-hairline"><tr v-for="entry in session.feeLedger.entries" :key="`${entry.reference}-${entry.occurred_at}`"><td class="py-2 text-ink-500">{{ new Date(entry.occurred_at).toLocaleDateString() }}</td><td class="py-2"><a v-if="entry.kind === 'payment'" :href="`/api/fees/payments/${entry.reference.replace('Receipt #', '')}/receipt`" target="_blank" class="font-medium text-primary-700 hover:underline">{{ entry.reference }}</a><span v-else>{{ entry.reference }}</span><span v-if="entry.description" class="ml-2 text-ink-500">{{ entry.description }}</span></td><td class="py-2">{{ entry.debit_cents ? money(entry.debit_cents) : ' ' }}</td><td class="py-2">{{ entry.credit_cents ? money(entry.credit_cents) : ' ' }}</td><td class="py-2 font-medium">{{ money(entry.balance_cents) }}</td></tr></tbody></table></div></section>
+    <SConfirmDialog :open="!!structureToDelete" title="Delete fee structure" :message="`Delete ${structureToDelete?.name || 'this structure'}? Existing invoices will be retained.`" confirm-label="Delete" :busy="session.loading === 'fees'" @cancel="structureToDelete = null" @confirm="deleteStructure" />
   </div>
 </template>

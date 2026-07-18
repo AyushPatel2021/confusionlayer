@@ -34,6 +34,7 @@ from app.main import (
     list_invoices,
     update_fee_structure,
     record_payment,
+    student_fee_ledger,
     void_invoice,
 )
 from app.models import Base, Student, User
@@ -150,6 +151,18 @@ class FeesHrTest(TestCase):
         with self.assertRaises(HTTPException) as exc:
             create_invoice(InvoiceCreateRequest(recipient_name="Outside", student_id=outsider.id, amount_cents=1000), current_user=self.owner, db=self.db)
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_student_ledger_orders_invoices_and_receipts_with_running_balance(self) -> None:
+        student = Student(name="Asha")
+        self.db.add(student)
+        self.db.flush()
+        self.db.add(User(org_id=self.org.id, email="asha.ledger@gv.test", password_hash="x", role="student", name="Asha", student_id=student.id))
+        self.db.commit()
+        invoice = create_invoice(InvoiceCreateRequest(recipient_name="Asha", student_id=student.id, amount_cents=10000), current_user=self.owner, db=self.db)
+        record_payment(invoice.id, PaymentCreateRequest(amount_cents=4000, method="cash"), current_user=self.owner, db=self.db)
+        ledger = student_fee_ledger(student.id, current_user=self.owner, db=self.db)
+        self.assertEqual([(entry.kind, entry.balance_cents) for entry in ledger.entries], [("invoice", 10000), ("payment", 6000)])
+        self.assertEqual(ledger.outstanding_cents, 6000)
 
     # ---- HR / payroll ----
 

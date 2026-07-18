@@ -303,6 +303,7 @@ export interface FeesSummary {
   outstanding_cents: number;
   invoice_count: number;
 }
+export interface FeeLedger { student_id: number; student_name: string; outstanding_cents: number; entries: Array<{ occurred_at: string; kind: "invoice" | "payment"; reference: string; description: string | null; debit_cents: number; credit_cents: number; balance_cents: number }>; }
 
 export interface FeeStructure { id: number; name: string; amount_cents: number; }
 
@@ -352,6 +353,8 @@ export interface AdminUsage {
   applications: number;
 }
 export interface AdminAuditLog { id: number; action: string; target: string | null; organization: string | null; actor: string | null; created_at: string; }
+export interface AdminUser { id: number; name: string | null; email: string; role: string; organization: string | null; active: boolean; }
+export interface AdminContent { subjects: number; chapters: number; concepts: number; concept_edges: number; }
 
 export interface ClassroomMember {
   id: number;
@@ -421,6 +424,7 @@ export const useSessionStore = defineStore("session", {
     applications: [] as AdmissionApplication[],
     invoices: [] as Invoice[],
     feesSummary: null as FeesSummary | null,
+    feeLedger: null as FeeLedger | null,
     feeStructures: [] as FeeStructure[],
     employees: [] as Employee[],
     payrollRuns: [] as PayrollRun[],
@@ -428,6 +432,8 @@ export const useSessionStore = defineStore("session", {
     adminOrgs: [] as AdminOrg[],
     adminUsage: null as AdminUsage | null,
     adminAuditLogs: [] as AdminAuditLog[],
+    adminUsers: [] as AdminUser[],
+    adminContent: null as AdminContent | null,
     dashboard: null as Dashboard | null,
     classrooms: [] as ManagedClassroom[],
     classroomOptions: null as ClassroomOptions | null,
@@ -1272,6 +1278,13 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadFeeLedger(studentId: number) {
+      this.loading = "fee-ledger";
+      this.error = "";
+      try { this.feeLedger = await api<FeeLedger>(`/api/fees/students/${studentId}/ledger`); }
+      catch (error) { this.error = messageFromError(error); }
+      finally { this.loading = ""; }
+    },
     async createFeeStructure(payload: { name: string; amount_cents: number }): Promise<boolean> {
       try { await api("/api/fees/structures", { method: "POST", body: JSON.stringify(payload) }); await this.loadFees(); return true; }
       catch (error) { this.error = messageFromError(error); return false; }
@@ -1428,10 +1441,12 @@ export const useSessionStore = defineStore("session", {
       this.loading = "admin";
       this.error = "";
       try {
-        const [orgs, usage, auditLogs] = await Promise.all([api<AdminOrg[]>("/api/admin/orgs", { }), api<AdminUsage>("/api/admin/usage", { }), api<AdminAuditLog[]>("/api/admin/audit-logs")]);
+        const [orgs, usage, auditLogs, users, content] = await Promise.all([api<AdminOrg[]>("/api/admin/orgs", { }), api<AdminUsage>("/api/admin/usage", { }), api<AdminAuditLog[]>("/api/admin/audit-logs"), api<AdminUser[]>("/api/admin/users"), api<AdminContent>("/api/admin/content")]);
         this.adminOrgs = orgs;
         this.adminUsage = usage;
         this.adminAuditLogs = auditLogs;
+        this.adminUsers = users;
+        this.adminContent = content;
       } catch (error) {
         this.error = messageFromError(error);
       } finally {

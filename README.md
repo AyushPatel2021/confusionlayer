@@ -9,11 +9,9 @@ the AI engine that predicts and clears student confusion *before* it derails a l
 
 **Live:** https://confusionlayer.znova.in
 
-> **Status — active development.** The AI learning core (teacher-gated tutoring, misconception
-> diagnosis, teach-back, the Confusion Forecast Engine, and student progress) is built and live.
-> The full platform — marketing site, real multi-tenant auth, the role hierarchy, curriculum
-> authoring/import, and the ERP modules (admissions, fees, HR) — is being built out per the
-> roadmap below and detailed in `PRODUCT_PLAN.md`.
+> **Status — active development.** The multi-tenant learning core, role hierarchy, curriculum
+> authoring/import, admissions, fees, HR/payroll, parent view, and platform-admin overview are
+> live. Remaining roadmap work is depth and polish, tracked in `PRODUCT_PLAN.md`.
 
 ## Who it's for
 
@@ -42,6 +40,17 @@ of prerequisite concepts — and briefs the teacher before the lesson.
 - **Teacher briefs:** a predictive Forecast Brief (pre-lesson) and a reactive Confusion Brief
   (aggregated, privacy-thresholded — never individual student names).
 - **For students:** mastery-over-time progress and self-start tutorials for any topic.
+- **Persistent learner model:** student and teacher prerequisite maps show mastery, decay, and
+  forecast risk as connected curriculum concepts; an exam outlook turns the highest risks into
+  targeted review.
+
+## Operational modules
+
+- **Admissions:** applications progress from intake to enrolment.
+- **Fees:** fee structures, itemised invoices, payments, printable receipts, student ledgers,
+  dues, and CSV export.
+- **HR:** employee records, lifecycle status, payroll runs, payslips, and exports.
+- **Platform administration:** organization, usage, content-library, user, and audit visibility.
 
 ## Roles & access
 
@@ -96,6 +105,7 @@ Run backend tests:
 
 ```bash
 cd backend && python -m pytest
+cd ../frontend && npm run build
 ```
 
 ## Configuration

@@ -28,6 +28,7 @@ from app.main import (
     grade_teach_back_endpoint,
     recompute_forecasts,
     student_confusion_map,
+    teacher_student_confusion_map,
     student_syllabus,
     student_report_card,
     tutorial,
@@ -84,6 +85,13 @@ class LearningApiTest(TestCase):
 
     def test_student_confusion_map_returns_mastery_nodes(self) -> None:
         graph = student_confusion_map(current_user=self.student_user, db=self.db)
+        self.assertEqual([node.concept_id for node in graph.nodes], [self.unlocked_concept.id])
+        self.assertEqual(graph.edges, [])
+
+    def test_teacher_confusion_map_is_limited_to_their_classroom_student(self) -> None:
+        graph = teacher_student_confusion_map(
+            self.classroom.id, self.student.id, current_user=self.teacher_user, db=self.db
+        )
         self.assertEqual([node.concept_id for node in graph.nodes], [self.unlocked_concept.id])
         self.assertEqual(graph.edges, [])
 

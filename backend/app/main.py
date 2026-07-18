@@ -1,4 +1,5 @@
 import csv
+import html
 import io
 import os
 from dataclasses import dataclass
@@ -646,6 +647,23 @@ class FeesSummaryResponse(BaseModel):
     invoice_count: int
 
 
+class FeeLedgerEntryResponse(BaseModel):
+    occurred_at: datetime
+    kind: Literal["invoice", "payment"]
+    reference: str
+    description: str | None
+    debit_cents: int
+    credit_cents: int
+    balance_cents: int
+
+
+class FeeLedgerResponse(BaseModel):
+    student_id: int
+    student_name: str
+    outstanding_cents: int
+    entries: list[FeeLedgerEntryResponse]
+
+
 # --- M9: HR ---
 class EmployeeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
@@ -787,6 +805,22 @@ class AdminAuditLogResponse(BaseModel):
     organization: str | None
     actor: str | None
     created_at: datetime
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    name: str | None
+    email: str
+    role: str
+    organization: str | None
+    active: bool
+
+
+class AdminContentResponse(BaseModel):
+    subjects: int
+    chapters: int
+    concepts: int
+    concept_edges: int
     employees: int
     applications: int
 
@@ -2332,6 +2366,7 @@ def create_fee_structure(payload: FeeStructureCreateRequest, current_user: User 
     _require_module(db, current_user, "accounting")
     structure = FeeStructure(org_id=current_user.org_id, name=payload.name.strip(), amount_cents=payload.amount_cents)
     db.add(structure)
+    _audit(db, current_user, "fees.structure.created", structure.name)
     db.commit()
     db.refresh(structure)
     return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
@@ -2351,6 +2386,7 @@ def update_fee_structure(structure_id: int, payload: FeeStructureCreateRequest, 
     structure = _owned_fee_structure(db, current_user, structure_id)
     structure.name = payload.name.strip()
     structure.amount_cents = payload.amount_cents
+    _audit(db, current_user, "fees.structure.updated", structure.name)
     db.commit()
     db.refresh(structure)
     return FeeStructureResponse(id=structure.id, name=structure.name, amount_cents=structure.amount_cents)
@@ -2359,6 +2395,7 @@ def update_fee_structure(structure_id: int, payload: FeeStructureCreateRequest, 
 @app.delete("/api/fees/structures/{structure_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fee_structure(structure_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     structure = _owned_fee_structure(db, current_user, structure_id)
+    _audit(db, current_user, "fees.structure.deleted", structure.name)
     db.delete(structure)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2379,6 +2416,7 @@ def apply_fee_structure(structure_id: int, payload: FeeStructureApplyRequest, cu
         db.flush()
         db.add(InvoiceLineItem(invoice_id=invoice.id, description=structure.name, amount_cents=structure.amount_cents))
         invoices.append(invoice)
+    _audit(db, current_user, "fees.structure.applied", structure.name, {"student_count": len(students)})
     db.commit()
     return [_invoice_response(db, invoice, 0) for invoice in invoices]
 
@@ -2415,6 +2453,7 @@ def create_invoice(payload: InvoiceCreateRequest, current_user: User = Depends(g
     db.flush()
     for item in payload.line_items:
         db.add(InvoiceLineItem(invoice_id=invoice.id, description=item.description.strip(), amount_cents=item.amount_cents))
+    _audit(db, current_user, "fees.invoice.created", f"Invoice #{invoice.id}", {"amount_cents": invoice.amount_cents})
     db.commit()
     db.refresh(invoice)
     return _invoice_response(db, invoice, 0)
@@ -2439,6 +2478,7 @@ def update_invoice(invoice_id: int, payload: InvoiceCreateRequest, current_user:
         db.delete(item)
     for item in payload.line_items:
         db.add(InvoiceLineItem(invoice_id=invoice.id, description=item.description.strip(), amount_cents=item.amount_cents))
+    _audit(db, current_user, "fees.invoice.updated", f"Invoice #{invoice.id}")
     db.commit()
     db.refresh(invoice)
     return _invoice_response(db, invoice, 0)
@@ -2449,7 +2489,10 @@ def record_payment(invoice_id: int, payload: PaymentCreateRequest, current_user:
     invoice = _owned_invoice(db, current_user, invoice_id)
     if invoice.voided:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot record a payment against a voided invoice")
-    db.add(Payment(org_id=invoice.org_id, invoice_id=invoice.id, amount_cents=payload.amount_cents, method=payload.method, note=payload.note))
+    payment = Payment(org_id=invoice.org_id, invoice_id=invoice.id, amount_cents=payload.amount_cents, method=payload.method, note=payload.note)
+    db.add(payment)
+    db.flush()
+    _audit(db, current_user, "fees.payment.recorded", f"Receipt #{payment.id}", {"invoice_id": invoice.id, "amount_cents": payment.amount_cents})
     db.commit()
     paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
     return _invoice_response(db, invoice, int(paid))
@@ -2459,6 +2502,7 @@ def record_payment(invoice_id: int, payload: PaymentCreateRequest, current_user:
 def void_invoice(invoice_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> InvoiceResponse:
     invoice = _owned_invoice(db, current_user, invoice_id)
     invoice.voided = True
+    _audit(db, current_user, "fees.invoice.voided", f"Invoice #{invoice.id}")
     db.commit()
     paid = db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0
     return _invoice_response(db, invoice, int(paid))
@@ -2473,6 +2517,26 @@ def fees_summary(current_user: User = Depends(get_current_user), db: Session = D
     billed = sum(inv.amount_cents for inv in invoices)
     collected = sum(min(paid.get(inv.id, 0), inv.amount_cents) for inv in invoices)
     return FeesSummaryResponse(billed_cents=billed, collected_cents=collected, outstanding_cents=max(0, billed - collected), invoice_count=len(invoices))
+
+
+@app.get("/api/fees/students/{student_id}/ledger", response_model=FeeLedgerResponse)
+def student_fee_ledger(student_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FeeLedgerResponse:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    student = _org_student(db, current_user.org_id or 0, student_id)
+    invoices = db.scalars(select(Invoice).where(Invoice.org_id == current_user.org_id, Invoice.student_id == student.id).order_by(Invoice.created_at, Invoice.id)).all()
+    entries: list[tuple[datetime, int, FeeLedgerEntryResponse]] = []
+    for invoice in invoices:
+        if not invoice.voided:
+            entries.append((invoice.created_at, invoice.id, FeeLedgerEntryResponse(occurred_at=invoice.created_at, kind="invoice", reference=f"Invoice #{invoice.id}", description=invoice.description, debit_cents=invoice.amount_cents, credit_cents=0, balance_cents=0)))
+        for payment in db.scalars(select(Payment).where(Payment.invoice_id == invoice.id).order_by(Payment.created_at, Payment.id)).all():
+            entries.append((payment.created_at, payment.id, FeeLedgerEntryResponse(occurred_at=payment.created_at, kind="payment", reference=f"Receipt #{payment.id}", description=payment.note or payment.method, debit_cents=0, credit_cents=payment.amount_cents, balance_cents=0)))
+    balance = 0
+    response_entries = []
+    for _, _, entry in sorted(entries, key=lambda item: (item[0], item[1])):
+        balance += entry.debit_cents - entry.credit_cents
+        response_entries.append(entry.model_copy(update={"balance_cents": balance}))
+    return FeeLedgerResponse(student_id=student.id, student_name=student.name, outstanding_cents=max(0, balance), entries=response_entries)
 
 
 # ---- M9: HR & payroll ----
@@ -2503,6 +2567,7 @@ def create_employee(payload: EmployeeCreateRequest, current_user: User = Depends
         salary_cents=payload.salary_cents,
     )
     db.add(employee)
+    _audit(db, current_user, "hr.employee.created", employee.name)
     db.commit()
     db.refresh(employee)
     return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
@@ -2521,6 +2586,7 @@ def update_employee(employee_id: int, payload: EmployeeCreateRequest, current_us
     employee.phone = (payload.phone or "").strip() or None
     employee.join_date = payload.join_date
     employee.salary_cents = payload.salary_cents
+    _audit(db, current_user, "hr.employee.updated", employee.name)
     db.commit()
     db.refresh(employee)
     return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
@@ -2534,6 +2600,7 @@ def set_employee_status(employee_id: int, payload: EmployeeStatusRequest, curren
     if not employee or employee.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
     employee.status = payload.status
+    _audit(db, current_user, f"hr.employee.{payload.status}", employee.name)
     db.commit()
     db.refresh(employee)
     return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
@@ -2703,6 +2770,20 @@ def admin_usage(current_user: User = Depends(get_current_user), db: Session = De
         employees=count(Employee),
         applications=count(AdmissionApplication),
     )
+
+
+@app.get("/api/admin/users", response_model=list[AdminUserResponse])
+def admin_list_users(limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AdminUserResponse]:
+    _require_platform_admin(current_user)
+    users = db.scalars(select(User).order_by(User.id.desc()).limit(max(1, min(limit, 200)))).all()
+    return [AdminUserResponse(id=user.id, name=user.name, email=user.email, role=user.role, organization=db.get(Organization, user.org_id).name if user.org_id and db.get(Organization, user.org_id) else None, active=user.is_active) for user in users]
+
+
+@app.get("/api/admin/content", response_model=AdminContentResponse)
+def admin_content_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AdminContentResponse:
+    _require_platform_admin(current_user)
+    count = lambda model: int(db.scalar(select(func.count(model.id))) or 0)  # noqa: E731
+    return AdminContentResponse(subjects=count(Subject), chapters=count(Chapter), concepts=count(Concept), concept_edges=count(ConceptEdge))
 
 
 @app.get("/api/admin/audit-logs", response_model=list[AdminAuditLogResponse])
@@ -2878,6 +2959,19 @@ def print_invoice(invoice_id: int, current_user: User = Depends(get_current_user
     paid = _paid_cents_map(db, invoice.org_id).get(invoice.id, 0)
     org = _current_org(db, current_user)
     body = f"<h1>{org.name}</h1><h2>Invoice #{invoice.id}</h2><p><b>Recipient:</b> {invoice.recipient_name}</p><p>{invoice.description or ''}</p><p><b>Amount:</b> {invoice.amount_cents / 100:.2f} {org.currency}</p><p><b>Paid:</b> {paid / 100:.2f} {org.currency}</p><script>window.print()</script>"
+    return Response(body, media_type="text/html")
+
+
+@app.get("/api/fees/payments/{payment_id}/receipt")
+def print_payment_receipt(payment_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    _require_roles(current_user, FEES_ROLES)
+    _require_module(db, current_user, "accounting")
+    payment = db.get(Payment, payment_id)
+    if not payment or payment.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+    invoice = db.get(Invoice, payment.invoice_id)
+    org = _current_org(db, current_user)
+    body = f"<h1>{html.escape(org.name)}</h1><h2>Payment receipt #{payment.id}</h2><p><b>Received from:</b> {html.escape(invoice.recipient_name if invoice else 'Unknown')}</p><p><b>Amount:</b> {payment.amount_cents / 100:.2f} {html.escape(org.currency)}</p><p><b>Method:</b> {html.escape(payment.method or 'Not recorded')}</p><p><b>Note:</b> {html.escape(payment.note or '')}</p><script>window.print()</script>"
     return Response(body, media_type="text/html")
 
 
