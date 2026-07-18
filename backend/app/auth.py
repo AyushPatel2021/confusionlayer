@@ -179,10 +179,16 @@ def clear_auth_cookie(response: Response) -> None:
 
 
 def user_response(user: User, organization: Organization | None = None) -> AuthUserResponse:
+    profile_name = user.name
+    if not profile_name and user.teacher:
+        profile_name = user.teacher.name
+    if not profile_name and user.student:
+        profile_name = user.student.name
+
     return AuthUserResponse(
         id=user.id,
         email=user.email,
-        name=user.name,
+        name=profile_name,
         role=user.role,
         org_id=user.org_id,
         org_name=organization.name if organization else None,

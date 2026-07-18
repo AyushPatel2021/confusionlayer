@@ -23,9 +23,10 @@ from app.auth import (
     get_current_user,
     hash_password,
     normalize_email,
+    user_response,
     verify_password,
 )
-from app.models import Base, Student, Teacher
+from app.models import Base, Student, Teacher, User
 
 
 class AuthTest(TestCase):
@@ -109,6 +110,23 @@ class AuthTest(TestCase):
         self.assertEqual(demo_teacher.teacher_id, teacher.id)
         self.assertEqual(demo_student.email, "demo.student@confusionlayer.local")
         self.assertEqual(demo_student.student_id, student.id)
+
+    def test_user_response_uses_linked_student_name_when_account_name_is_empty(self) -> None:
+        student = Student(name="Demo Student")
+        self.db.add(student)
+        self.db.flush()
+        user = User(
+            email="linked.student@example.com",
+            name=None,
+            password_hash="not-used",
+            role="student",
+            student_id=student.id,
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+
+        self.assertEqual(user_response(user).name, "Demo Student")
 
     def test_normalize_email(self) -> None:
         self.assertEqual(normalize_email("  USER@Example.COM "), "user@example.com")
