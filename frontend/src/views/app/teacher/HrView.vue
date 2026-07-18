@@ -31,6 +31,7 @@ async function addEmployee() {
   }
 }
 function edit(employee: { id: number; name: string; email: string | null; designation: string | null; phone: string | null; join_date: string | null; salary_cents: number }) { editingId.value = employee.id; form.value = { name: employee.name, email: employee.email || "", designation: employee.designation || "", phone: employee.phone || "", join_date: employee.join_date || "", salary: String(employee.salary_cents / 100) }; showForm.value = true; }
+async function toggleStatus(employee: { id: number; name: string; status: string }) { const next = employee.status === "active" ? "inactive" : "active"; if (window.confirm(`${next === "inactive" ? "Deactivate" : "Reactivate"} ${employee.name}?`)) await session.setEmployeeStatus(employee.id, next); }
 async function run() {
   if (period.value.trim() && (await session.runPayroll(period.value.trim()))) period.value = "";
 }
@@ -70,7 +71,7 @@ async function run() {
               <td class="px-4 py-3 text-ink-700">{{ e.designation || "N/A" }}</td>
               <td class="px-4 py-3 text-ink-700">{{ money(e.salary_cents) }}</td>
               <td class="px-4 py-3"><SBadge :tone="e.status === 'active' ? 'success' : 'neutral'">{{ e.status }}</SBadge></td>
-              <td class="px-4 py-3 text-right"><SButton variant="ghost" @click="edit(e)">Edit</SButton></td>
+              <td class="px-4 py-3 text-right"><SButton variant="ghost" @click="edit(e)">Edit</SButton><SButton variant="ghost" :disabled="session.loading === `employee-${e.id}`" @click="toggleStatus(e)">{{ e.status === "active" ? "Deactivate" : "Reactivate" }}</SButton></td>
             </tr>
           </tbody>
         </table>

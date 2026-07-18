@@ -1361,6 +1361,13 @@ export const useSessionStore = defineStore("session", {
       catch (error) { this.error = messageFromError(error); return false; }
       finally { this.loading = ""; }
     },
+    async setEmployeeStatus(employeeId: number, status: "active" | "inactive"): Promise<boolean> {
+      this.loading = `employee-${employeeId}`;
+      this.error = "";
+      try { await api(`/api/hr/employees/${employeeId}/status`, { method: "POST", body: JSON.stringify({ status }) }); await this.loadEmployees(); return true; }
+      catch (error) { this.error = messageFromError(error); return false; }
+      finally { this.loading = ""; }
+    },
     async loadPayrollRuns() {
       this.loading = "payroll";
       this.error = "";

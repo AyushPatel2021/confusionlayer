@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth import RegisterRequest, register_org
 from app.main import (
     EmployeeCreateRequest,
+    EmployeeStatusRequest,
     FeeStructureCreateRequest,
     FeeStructureApplyRequest,
     InvoiceCreateRequest,
@@ -22,6 +23,7 @@ from app.main import (
     PaymentCreateRequest,
     PayrollRunCreateRequest,
     create_employee,
+    set_employee_status,
     create_fee_structure,
     delete_fee_structure,
     apply_fee_structure,
@@ -158,6 +160,11 @@ class FeesHrTest(TestCase):
         self.assertEqual(run.status, "finalized")
         self.assertEqual(len(run.payslips), 2)
         self.assertEqual(sum(s.net_cents for s in run.payslips), 550000)
+
+    def test_employee_can_be_deactivated_without_losing_profile(self) -> None:
+        employee = create_employee(EmployeeCreateRequest(name="Teacher A", phone="9876543210", join_date="2026-06-01", salary_cents=300000), current_user=self.owner, db=self.db)
+        inactive = set_employee_status(employee.id, EmployeeStatusRequest(status="inactive"), current_user=self.owner, db=self.db)
+        self.assertEqual((inactive.status, inactive.phone, str(inactive.join_date)), ("inactive", "9876543210", "2026-06-01"))
 
     def test_payroll_requires_employees(self) -> None:
         with self.assertRaises(HTTPException) as exc:

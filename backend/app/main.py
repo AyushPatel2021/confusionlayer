@@ -2476,7 +2476,7 @@ def set_employee_status(employee_id: int, payload: EmployeeStatusRequest, curren
     employee.status = payload.status
     db.commit()
     db.refresh(employee)
-    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, salary_cents=employee.salary_cents, status=employee.status)
+    return EmployeeResponse(id=employee.id, name=employee.name, email=employee.email, designation=employee.designation, phone=employee.phone, join_date=employee.join_date, salary_cents=employee.salary_cents, status=employee.status)
 
 
 @app.get("/api/hr/payroll", response_model=list[PayrollRunResponse])
