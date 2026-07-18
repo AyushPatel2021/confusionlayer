@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, X } from "@lucide/vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 
 import AppSidebar from "../components/app/AppSidebar.vue";
@@ -21,6 +21,23 @@ const pageTitle = computed(() => (typeof route.meta.title === "string" ? route.m
 const workspaceName = computed(() => session.user?.org_name || (session.isStudent ? "Learning" : session.isParent ? "Family" : "Workspace"));
 const settingsPath = computed(() => session.user?.role === "owner" && session.user.segment === "school" ? "/app/settings/members" : "/app/settings/billing");
 const canOpenSettings = computed(() => session.user?.role === "owner");
+const breadcrumbItems = computed(() => {
+  const parts = route.path.replace(/^\/app\/?/, "").split("/").filter(Boolean);
+  const labels: Record<string, string> = {
+    teacher: "Teaching",
+    settings: "Settings",
+    learn: "Learning",
+    curriculum: "Curriculum",
+  };
+  const items = [{ label: "Workspace", to: "/app/dashboard" }];
+  let path = "/app";
+  for (const [index, part] of parts.entries()) {
+    path += `/${part}`;
+    const label = index === parts.length - 1 ? pageTitle.value : labels[part] || part.replace(/-/g, " ");
+    if (items[items.length - 1]?.label !== label) items.push({ label, to: path });
+  }
+  return items;
+});
 
 onMounted(() => void session.restore());
 
@@ -98,7 +115,15 @@ async function signOut() {
           <div class="flex min-w-0 items-center gap-3">
             <button class="s-focus flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50 md:hidden" title="Open menu" aria-label="Open menu" @click.stop="mobileNavOpen = true"><Menu :size="20" /></button>
             <div class="min-w-0">
-              <p class="truncate text-xs font-medium text-ink-500">{{ workspaceName }}</p>
+              <div class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-ink-500" aria-label="Breadcrumb">
+                <button class="s-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-primary-50 hover:text-primary-700" title="Back" aria-label="Back" @click="router.back()"><ArrowLeft :size="15" /></button>
+                <button class="s-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-primary-50 hover:text-primary-700" title="Forward" aria-label="Forward" @click="router.forward()"><ArrowRight :size="15" /></button>
+                <template v-for="(item, index) in breadcrumbItems" :key="item.to">
+                  <ChevronRight v-if="index" :size="14" class="shrink-0 text-ink-400" aria-hidden="true" />
+                  <RouterLink v-if="index < breadcrumbItems.length - 1" :to="item.to" class="max-w-28 truncate hover:text-primary-700">{{ item.label }}</RouterLink>
+                  <span v-else class="max-w-36 truncate text-ink-700">{{ item.label }}</span>
+                </template>
+              </div>
               <h1 class="truncate font-display text-xl font-semibold text-ink-900">{{ pageTitle }}</h1>
             </div>
           </div>
