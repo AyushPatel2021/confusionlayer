@@ -185,6 +185,7 @@ export interface StudentProgress {
   };
   concepts: ProgressConcept[];
 }
+export interface ConfusionMap { nodes: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>; edges: Array<{ prerequisite_concept_id: number; concept_id: number }>; }
 
 export interface StudentInsights {
   student_id: number;
@@ -406,6 +407,7 @@ export const useSessionStore = defineStore("session", {
     confusionNarratives: {} as Record<number, BriefNarrative>,
     selfStartTutorial: null as Tutorial | null,
     progress: null as StudentProgress | null,
+    confusionMap: null as ConfusionMap | null,
     studentInsights: null as StudentInsights | null,
     examOutcome: null as ExamOutcome | null,
     curriculumSubjects: [] as CurriculumSubject[],
@@ -965,6 +967,7 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadConfusionMap() { this.loading = "confusion-map"; this.error = ""; try { this.confusionMap = await api<ConfusionMap>("/api/student/confusion-map"); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
     async loadStudentInsights(classroomId: number, studentId: number) {
       this.loading = "student-insights";
       this.error = "";

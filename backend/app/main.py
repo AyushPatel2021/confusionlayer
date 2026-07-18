@@ -61,6 +61,7 @@ from app.models import (
     Classroom,
     ClassroomStudent,
     Concept,
+    ConceptEdge,
     ConfusionBrief,
     ForecastRecord,
     Employee,
@@ -377,6 +378,24 @@ class StudentProgressResponse(BaseModel):
     mastered_threshold: float
     summary: ProgressSummaryResponse
     concepts: list[ProgressConceptResponse]
+
+
+class ConfusionMapNodeResponse(BaseModel):
+    concept_id: int
+    title: str
+    chapter_title: str
+    effective_mastery: float
+    forecast_risk: float | None
+
+
+class ConfusionMapEdgeResponse(BaseModel):
+    prerequisite_concept_id: int
+    concept_id: int
+
+
+class ConfusionMapResponse(BaseModel):
+    nodes: list[ConfusionMapNodeResponse]
+    edges: list[ConfusionMapEdgeResponse]
 
 
 class StudentInsightConceptResponse(BaseModel):
@@ -1358,6 +1377,26 @@ def student_progress(
             average_effective_mastery=average,
         ),
         concepts=concepts,
+    )
+
+
+@app.get("/api/student/confusion-map", response_model=ConfusionMapResponse)
+def student_confusion_map(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ConfusionMapResponse:
+    if current_user.role != "student" or current_user.student_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can view their confusion map")
+    rows = db.execute(
+        select(MasteryRecord, Concept, Chapter)
+        .join(Concept, Concept.id == MasteryRecord.concept_id)
+        .join(Chapter, Chapter.id == Concept.chapter_id)
+        .where(MasteryRecord.student_id == current_user.student_id)
+        .order_by(Chapter.order, Concept.order)
+    ).all()
+    risk_by_concept = {record.concept_id: record.predicted_difficulty for record in db.scalars(select(ForecastRecord).where(ForecastRecord.student_id == current_user.student_id)).all()}
+    node_ids = {record.concept_id for record, _concept, _chapter in rows}
+    edges = db.scalars(select(ConceptEdge).where(ConceptEdge.concept_id.in_(node_ids), ConceptEdge.prerequisite_concept_id.in_(node_ids))).all() if node_ids else []
+    return ConfusionMapResponse(
+        nodes=[ConfusionMapNodeResponse(concept_id=record.concept_id, title=concept.title, chapter_title=chapter.title, effective_mastery=effective_mastery(record.computed_mastery, days_since_review(record.last_reviewed_at)), forecast_risk=risk_by_concept.get(record.concept_id)) for record, concept, chapter in rows],
+        edges=[ConfusionMapEdgeResponse(prerequisite_concept_id=edge.prerequisite_concept_id, concept_id=edge.concept_id) for edge in edges],
     )
 
 
