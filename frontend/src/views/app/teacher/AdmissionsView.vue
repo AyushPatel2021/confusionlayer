@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
-import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
+import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
+import SDatePicker from "../../../components/ui/SDatePicker.vue";
+import SKanbanBoard from "../../../components/ui/SKanbanBoard.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
 import { useSessionStore, type AdmissionApplication } from "../../../stores/session";
@@ -11,6 +13,7 @@ const session = useSessionStore();
 const showForm = ref(false);
 const form = ref({ applicant_name: "", applicant_email: "", grade: "", source: "", date_of_birth: "", notes: "" });
 const editingId = ref<number | null>(null);
+const applicationToDelete = ref<AdmissionApplication | null>(null);
 
 const columns = [
   { key: "applied", label: "Applied", tone: "neutral" as const },
@@ -22,9 +25,7 @@ const columns = [
 
 onMounted(() => session.loadApplications());
 
-function byStatus(status: string): AdmissionApplication[] {
-  return session.applications.filter((a) => a.status === status);
-}
+const boardItems = computed(() => session.applications.map((app) => ({ id: app.id, status: app.status, title: app.applicant_name, subtitle: app.grade ? `Grade ${app.grade}` : app.source || "", meta: app.applicant_email || app.source || "" })));
 
 async function submit() {
   const saved = editingId.value
@@ -41,8 +42,12 @@ function edit(app: AdmissionApplication) {
   form.value = { applicant_name: app.applicant_name, applicant_email: app.applicant_email || "", grade: app.grade || "", source: app.source || "", date_of_birth: app.date_of_birth || "", notes: app.notes || "" };
   showForm.value = true;
 }
-async function remove(app: AdmissionApplication) {
-  if (window.confirm(`Delete ${app.applicant_name}'s application?`)) await session.deleteApplication(app.id);
+async function remove() {
+  if (applicationToDelete.value && await session.deleteApplication(applicationToDelete.value.id)) applicationToDelete.value = null;
+}
+function selectBoardItem(item: { id: string | number }) {
+  const app = session.applications.find((entry) => entry.id === Number(item.id));
+  if (app) edit(app);
 }
 </script>
 
@@ -59,7 +64,7 @@ async function remove(app: AdmissionApplication) {
       <label class="text-sm">Email<input v-model="form.applicant_email" type="email" class="s-input mt-1" /></label>
       <label class="text-sm">Grade applying for<input v-model="form.grade" class="s-input mt-1" /></label>
       <label class="text-sm">Source<input v-model="form.source" class="s-input mt-1" placeholder="Referral, walk-in..." /></label>
-      <label class="text-sm">Date of birth<input v-model="form.date_of_birth" type="date" class="s-input mt-1" /></label>
+      <SDatePicker v-model="form.date_of_birth" label="Date of birth" />
       <label class="text-sm">Notes<input v-model="form.notes" class="s-input mt-1" /></label>
       <div class="sm:col-span-2">
         <SButton type="submit" variant="primary" :disabled="!form.applicant_name.trim() || session.loading === 'create-application'">
@@ -70,33 +75,34 @@ async function remove(app: AdmissionApplication) {
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 
     <SLoadingState v-if="session.loading === 'admissions' && !session.applications.length" :rows="3" />
-    <div v-else class="grid gap-4 lg:grid-cols-5">
-      <div v-for="col in columns" :key="col.key" class="rounded-lg border border-hairline bg-surface/60 p-3">
-        <div class="mb-3 flex items-center justify-between px-1">
-          <span class="text-sm font-semibold text-ink-900">{{ col.label }}</span>
-          <SBadge :tone="col.tone">{{ byStatus(col.key).length }}</SBadge>
-        </div>
-        <div class="space-y-3">
-          <article v-for="app in byStatus(col.key)" :key="app.id" class="card-lift rounded-md border border-hairline bg-surface p-3">
-            <p class="text-sm font-semibold text-ink-900">{{ app.applicant_name }}</p>
-            <p v-if="app.grade" class="text-xs text-ink-500">Grade {{ app.grade }}</p>
-            <p v-if="app.source" class="text-xs text-ink-500">{{ app.source }}</p>
-            <p v-if="app.applicant_email" class="truncate text-xs text-ink-500">{{ app.applicant_email }}</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <SButton v-if="app.status !== 'enrolled'" variant="ghost" @click="edit(app)">Edit</SButton>
-              <SButton v-if="app.status !== 'enrolled'" variant="ghost" @click="remove(app)">Delete</SButton>
-              <SButton v-if="app.status === 'applied'" variant="secondary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'reviewing')">Review</SButton>
-              <template v-if="app.status === 'reviewing'">
-                <SButton variant="primary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'accepted')">Accept</SButton>
-                <SButton variant="ghost" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'rejected')">Reject</SButton>
-              </template>
-              <SButton v-if="app.status === 'accepted'" variant="primary" :disabled="session.loading === `application-${app.id}`" @click="session.enrollApplication(app.id)">Enroll</SButton>
-              <span v-if="app.status === 'enrolled'" class="text-xs font-semibold text-primary-600">Enrolled ✓</span>
-            </div>
-          </article>
-          <p v-if="!byStatus(col.key).length" class="px-1 py-4 text-center text-xs text-ink-500">Empty</p>
-        </div>
+    <SKanbanBoard v-else :columns="columns" :items="boardItems" @select="selectBoardItem" />
+    <section v-if="session.applications.length" class="rounded-lg border border-hairline bg-surface p-5">
+      <p class="s-eyebrow">Quick actions</p>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <article v-for="app in session.applications.filter((entry) => entry.status !== 'enrolled')" :key="app.id" class="rounded-md border border-hairline p-3">
+          <p class="text-sm font-semibold text-ink-900">{{ app.applicant_name }}</p>
+          <p class="text-xs text-ink-500">{{ app.grade || app.source || "Applicant" }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <SButton variant="ghost" @click="edit(app)">Edit</SButton>
+            <SButton variant="ghost" @click="applicationToDelete = app">Delete</SButton>
+            <SButton v-if="app.status === 'applied'" variant="secondary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'reviewing')">Review</SButton>
+            <template v-if="app.status === 'reviewing'">
+              <SButton variant="primary" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'accepted')">Accept</SButton>
+              <SButton variant="ghost" :disabled="session.loading === `application-${app.id}`" @click="session.setApplicationStatus(app.id, 'rejected')">Reject</SButton>
+            </template>
+            <SButton v-if="app.status === 'accepted'" variant="primary" :disabled="session.loading === `application-${app.id}`" @click="session.enrollApplication(app.id)">Enroll</SButton>
+          </div>
+        </article>
       </div>
-    </div>
+    </section>
+    <SConfirmDialog
+      :open="!!applicationToDelete"
+      title="Delete application"
+      :message="`Delete ${applicationToDelete?.applicant_name || 'this applicant'}'s application?`"
+      confirm-label="Delete"
+      :busy="!!applicationToDelete && session.loading === `application-${applicationToDelete.id}`"
+      @cancel="applicationToDelete = null"
+      @confirm="remove"
+    />
   </div>
 </template>

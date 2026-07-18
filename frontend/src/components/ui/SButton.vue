@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -20,10 +20,18 @@ const variantClass = computed(
       danger: "border-danger bg-danger text-white hover:opacity-90",
     })[props.variant],
 );
+
+const buttonRef = ref<HTMLButtonElement | null>(null);
+function focus() {
+  buttonRef.value?.focus();
+}
+
+defineExpose({ focus });
 </script>
 
 <template>
   <button
+    ref="buttonRef"
     :type="type"
     :disabled="disabled"
     class="s-focus inline-flex min-h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"

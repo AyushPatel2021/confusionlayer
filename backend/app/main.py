@@ -1621,6 +1621,7 @@ def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User 
     _require_curriculum_editor(current_user)
     subject = Subject(org_id=current_user.org_id, name=payload.name.strip(), board=payload.board.strip(), class_level=payload.class_level.strip())
     db.add(subject)
+    _audit(db, current_user, "curriculum.subject_created", subject.name)
     db.commit()
     db.refresh(subject)
     return CurriculumSubjectResponse(
@@ -1632,13 +1633,16 @@ def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User 
 def update_curriculum_subject(subject_id: int, payload: SubjectCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumSubjectResponse:
     subject = _editable_subject(db, current_user, subject_id)
     subject.name, subject.board, subject.class_level = payload.name.strip(), payload.board.strip(), payload.class_level.strip()
+    _audit(db, current_user, "curriculum.subject_updated", subject.name)
     db.commit()
     return CurriculumSubjectResponse(id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level, org_id=subject.org_id, shared=False, chapter_count=len(subject.chapters))
 
 
 @app.delete("/api/curriculum/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_curriculum_subject(subject_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    db.delete(_editable_subject(db, current_user, subject_id))
+    subject = _editable_subject(db, current_user, subject_id)
+    _audit(db, current_user, "curriculum.subject_deleted", subject.name)
+    db.delete(subject)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -1658,6 +1662,7 @@ def add_curriculum_chapter(subject_id: int, payload: ChapterCreateRequest, curre
     next_order = 1 + max((chapter.order for chapter in subject.chapters), default=0)
     chapter = Chapter(subject_id=subject.id, title=payload.title.strip(), order=next_order)
     db.add(chapter)
+    _audit(db, current_user, "curriculum.chapter_created", chapter.title, {"subject": subject.name})
     db.commit()
     db.refresh(chapter)
     return CurriculumChapterNode(id=chapter.id, title=chapter.title, order=chapter.order, concepts=[])
@@ -1672,6 +1677,7 @@ def add_curriculum_concept(chapter_id: int, payload: ConceptCreateRequest, curre
     next_order = 1 + max((concept.order for concept in chapter.concepts), default=0)
     concept = Concept(chapter_id=chapter.id, title=payload.title.strip(), order=next_order)
     db.add(concept)
+    _audit(db, current_user, "curriculum.topic_created", concept.title, {"chapter": chapter.title})
     db.commit()
     db.refresh(concept)
     return CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
@@ -1682,7 +1688,7 @@ def update_curriculum_chapter(chapter_id: int, payload: ChapterCreateRequest, cu
     chapter = db.get(Chapter, chapter_id)
     if not chapter: raise HTTPException(status_code=404, detail="Chapter not found")
     _editable_subject(db, current_user, chapter.subject_id)
-    chapter.title = payload.title.strip(); db.commit()
+    chapter.title = payload.title.strip(); _audit(db, current_user, "curriculum.chapter_updated", chapter.title); db.commit()
     return CurriculumChapterNode(id=chapter.id, title=chapter.title, order=chapter.order, concepts=[CurriculumConceptNode(id=c.id, title=c.title, order=c.order) for c in chapter.concepts])
 
 
@@ -1690,7 +1696,7 @@ def update_curriculum_chapter(chapter_id: int, payload: ChapterCreateRequest, cu
 def delete_curriculum_chapter(chapter_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     chapter = db.get(Chapter, chapter_id)
     if not chapter: raise HTTPException(status_code=404, detail="Chapter not found")
-    _editable_subject(db, current_user, chapter.subject_id); db.delete(chapter); db.commit()
+    _editable_subject(db, current_user, chapter.subject_id); _audit(db, current_user, "curriculum.chapter_deleted", chapter.title); db.delete(chapter); db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1699,7 +1705,7 @@ def update_curriculum_concept(concept_id: int, payload: ConceptCreateRequest, cu
     concept = db.get(Concept, concept_id)
     if not concept: raise HTTPException(status_code=404, detail="Topic not found")
     _editable_subject(db, current_user, concept.chapter.subject_id)
-    concept.title = payload.title.strip(); db.commit()
+    concept.title = payload.title.strip(); _audit(db, current_user, "curriculum.topic_updated", concept.title); db.commit()
     return CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
 
 
@@ -1707,7 +1713,7 @@ def update_curriculum_concept(concept_id: int, payload: ConceptCreateRequest, cu
 def delete_curriculum_concept(concept_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     concept = db.get(Concept, concept_id)
     if not concept: raise HTTPException(status_code=404, detail="Topic not found")
-    _editable_subject(db, current_user, concept.chapter.subject_id); db.delete(concept); db.commit()
+    _editable_subject(db, current_user, concept.chapter.subject_id); _audit(db, current_user, "curriculum.topic_deleted", concept.title); db.delete(concept); db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1871,6 +1877,7 @@ def create_classroom(payload: ClassroomCreateRequest, current_user: User = Depen
     org = _require_classroom_manager(current_user, db)
     classroom = Classroom(name=payload.name.strip(), org_id=org.id, subject_id=_org_subject(db, org.id, payload.subject_id).id, teacher_id=_org_teacher(db, org.id, payload.teacher_id).id)
     db.add(classroom)
+    _audit(db, current_user, "classroom.created", classroom.name)
     db.commit()
     db.refresh(classroom)
     return _managed_classroom_response(classroom)
@@ -1885,6 +1892,7 @@ def update_classroom(classroom_id: int, payload: ClassroomUpdateRequest, current
     classroom.name = payload.name.strip()
     classroom.subject_id = _org_subject(db, org.id, payload.subject_id).id
     classroom.teacher_id = _org_teacher(db, org.id, payload.teacher_id).id
+    _audit(db, current_user, "classroom.updated", classroom.name)
     db.commit()
     db.refresh(classroom)
     return _managed_classroom_response(classroom)
@@ -1896,6 +1904,7 @@ def delete_classroom(classroom_id: int, current_user: User = Depends(get_current
     classroom = db.get(Classroom, classroom_id)
     if not classroom or classroom.org_id != org.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Classroom not found")
+    _audit(db, current_user, "classroom.deleted", classroom.name)
     db.delete(classroom)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -1910,6 +1919,7 @@ def enroll_classroom_student(classroom_id: int, payload: ClassroomEnrollmentRequ
     student = _org_student(db, org.id, payload.student_id)
     if not db.scalar(select(ClassroomStudent.id).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student.id)):
         db.add(ClassroomStudent(classroom_id=classroom.id, student_id=student.id))
+        _audit(db, current_user, "classroom.student_enrolled", classroom.name, {"student_id": student.id, "student": student.name})
         db.commit()
         db.refresh(classroom)
     return _managed_classroom_response(classroom)
@@ -1924,6 +1934,8 @@ def remove_classroom_student(classroom_id: int, student_id: int, current_user: U
     enrollment = db.scalar(select(ClassroomStudent).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student_id))
     if not enrollment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student is not enrolled in this classroom")
+    student = db.get(Student, student_id)
+    _audit(db, current_user, "classroom.student_removed", classroom.name, {"student_id": student_id, "student": student.name if student else None})
     db.delete(enrollment)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2240,6 +2252,7 @@ def create_application(payload: ApplicationCreateRequest, current_user: User = D
         status="applied",
     )
     db.add(application)
+    _audit(db, current_user, "admissions.application_created", application.applicant_name)
     db.commit()
     db.refresh(application)
     return _application_response(application)
@@ -2254,6 +2267,7 @@ def update_application(application_id: int, payload: ApplicationCreateRequest, c
     application.source = (payload.source or "").strip() or None
     application.date_of_birth = payload.date_of_birth
     application.notes = payload.notes
+    _audit(db, current_user, "admissions.application_updated", application.applicant_name)
     db.commit()
     db.refresh(application)
     return _application_response(application)
@@ -2264,6 +2278,7 @@ def delete_application(application_id: int, current_user: User = Depends(get_cur
     application = _owned_application(db, current_user, application_id)
     if application.status == "enrolled":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enrolled applications must be retained")
+    _audit(db, current_user, "admissions.application_deleted", application.applicant_name)
     db.delete(application)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2275,6 +2290,7 @@ def set_application_status(application_id: int, payload: ApplicationStatusReques
     if application.status == "enrolled":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enrolled applications cannot change status")
     application.status = payload.status
+    _audit(db, current_user, "admissions.status_changed", application.applicant_name, {"status": application.status})
     db.commit()
     db.refresh(application)
     return _application_response(application)
@@ -2312,6 +2328,7 @@ def enroll_application(application_id: int, current_user: User = Depends(get_cur
         organization = db.get(Organization, application.org_id)
         create_invitation(db, organization, current_user, application.applicant_email, "student")
 
+    _audit(db, current_user, "admissions.application_enrolled", application.applicant_name, {"student_id": student.id})
     db.commit()
     db.refresh(application)
     return _application_response(application)

@@ -5,6 +5,7 @@ import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
+import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import { useSessionStore } from "../../../stores/session";
 
 const session = useSessionStore();
@@ -14,6 +15,7 @@ const editingId = ref<number | null>(null);
 const period = ref("");
 const designationForm = ref({ name: "", department: "" });
 const salaryStructureForm = ref({ name: "", amount: "" });
+const statusTarget = ref<{ id: number; name: string; status: string } | null>(null);
 
 onMounted(() => {
   session.loadEmployees();
@@ -34,7 +36,7 @@ async function addEmployee() {
   }
 }
 function edit(employee: { id: number; name: string; email: string | null; designation_id: number | null; salary_structure_id: number | null; employment_type: string; phone: string | null; join_date: string | null; salary_cents: number }) { editingId.value = employee.id; form.value = { name: employee.name, email: employee.email || "", designation_id: employee.designation_id, salary_structure_id: employee.salary_structure_id, employment_type: employee.employment_type, phone: employee.phone || "", join_date: employee.join_date || "", salary: String(employee.salary_cents / 100) }; showForm.value = true; }
-async function toggleStatus(employee: { id: number; name: string; status: string }) { const next = employee.status === "active" ? "inactive" : "active"; if (window.confirm(`${next === "inactive" ? "Deactivate" : "Reactivate"} ${employee.name}?`)) await session.setEmployeeStatus(employee.id, next); }
+async function toggleStatus() { if (statusTarget.value) { await session.setEmployeeStatus(statusTarget.value.id, statusTarget.value.status === "active" ? "inactive" : "active"); statusTarget.value = null; } }
 async function run() {
   if (period.value.trim() && (await session.runPayroll(period.value.trim()))) period.value = "";
 }
@@ -79,7 +81,7 @@ async function addSalaryStructure() { if (await session.createSalaryStructure({ 
               <td class="px-4 py-3 text-ink-700">{{ e.designation || "N/A" }}</td>
               <td class="px-4 py-3 text-ink-700">{{ money(e.salary_cents) }}</td>
               <td class="px-4 py-3"><SBadge :tone="e.status === 'active' ? 'success' : 'neutral'">{{ e.status }}</SBadge></td>
-              <td class="px-4 py-3 text-right"><SButton variant="ghost" @click="edit(e)">Edit</SButton><SButton variant="ghost" :disabled="session.loading === `employee-${e.id}`" @click="toggleStatus(e)">{{ e.status === "active" ? "Deactivate" : "Reactivate" }}</SButton></td>
+              <td class="px-4 py-3 text-right"><SButton variant="ghost" @click="edit(e)">Edit</SButton><SButton variant="ghost" :disabled="session.loading === `employee-${e.id}`" @click="statusTarget = e">{{ e.status === "active" ? "Deactivate" : "Reactivate" }}</SButton></td>
             </tr>
           </tbody>
         </table>
@@ -104,5 +106,6 @@ async function addSalaryStructure() { if (await session.createSalaryStructure({ 
         <li v-if="!session.payrollRuns.length" class="text-sm text-ink-500">No payroll runs yet.</li>
       </ul>
     </div>
+    <SConfirmDialog :open="!!statusTarget" :title="statusTarget?.status === 'active' ? 'Deactivate employee' : 'Reactivate employee'" :message="`${statusTarget?.name || 'This employee'} will remain in historical payroll records.`" :confirm-label="statusTarget?.status === 'active' ? 'Deactivate' : 'Reactivate'" @cancel="statusTarget = null" @confirm="toggleStatus" />
   </div>
 </template>

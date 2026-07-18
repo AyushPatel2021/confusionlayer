@@ -60,8 +60,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/admin",
     component: () => import("../layouts/AdminLayout.vue"),
-    // Role-gating to platform_admin lands with the admin backend (M11); require auth now.
-    meta: { requiresAuth: true, roles: ["platform_admin", "admin"], title: "Admin" },
+    meta: { requiresAuth: true, roles: ["platform_admin"], title: "Admin" },
     children: [{ path: "", name: "admin-home", component: () => import("../views/admin/AdminHomeView.vue"), meta: { title: "Admin" } }],
   },
   { path: "/:pathMatch(.*)*", redirect: "/" },

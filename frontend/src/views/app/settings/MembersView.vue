@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
+import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
 import { useSessionStore } from "../../../stores/session";
@@ -19,6 +20,7 @@ const guardianStudentId = ref<number | null>(null);
 const guardianDone = ref(false);
 const query = ref("");
 const department = ref("all");
+const memberToRemove = ref<{ id: number; name: string | null; email: string } | null>(null);
 const visibleMembers = computed(() => session.members.filter((member) => {
   const matchesQuery = `${member.name || ""} ${member.email} ${member.role}`.toLowerCase().includes(query.value.toLowerCase());
   return matchesQuery && (department.value === "all" || member.department === department.value);
@@ -51,7 +53,11 @@ function setRole(userId: number, event: Event) {
   void session.changeMemberRole(userId, role);
 }
 function setDepartment(userId: number, event: Event) { void session.changeMemberDepartment(userId, (event.target as HTMLSelectElement).value); }
-function removeMember(member: { id: number; name: string | null; email: string }) { if (window.confirm(`Remove ${member.name || member.email} from this workspace? The account will be deactivated and historical records retained.`)) void session.removeMember(member.id); }
+async function removeMember() {
+  if (!memberToRemove.value) return;
+  await session.removeMember(memberToRemove.value.id);
+  memberToRemove.value = null;
+}
 </script>
 
 <template>
@@ -104,7 +110,7 @@ function removeMember(member: { id: number; name: string | null; email: string }
               <select v-if="m.role !== 'owner'" :value="m.department" class="s-input py-1 text-xs" @change="setDepartment(m.id, $event)"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select>
               <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
               <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
-              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="removeMember(m)">Remove</SButton>
+              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="memberToRemove = m">Remove</SButton>
             </div>
           </li>
         </ul>
@@ -120,5 +126,14 @@ function removeMember(member: { id: number; name: string | null; email: string }
         </ul>
       </div>
     </div>
+    <SConfirmDialog
+      :open="!!memberToRemove"
+      title="Remove member"
+      :message="`Remove ${memberToRemove?.name || memberToRemove?.email || 'this member'} from this workspace? The account will be deactivated and historical records retained.`"
+      confirm-label="Remove"
+      :busy="!!memberToRemove && session.loading === `member-remove-${memberToRemove.id}`"
+      @cancel="memberToRemove = null"
+      @confirm="removeMember"
+    />
   </div>
 </template>

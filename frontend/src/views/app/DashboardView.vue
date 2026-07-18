@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import Chart from "chart.js/auto";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 
+import SChart from "../../components/ui/SChart.vue";
 import SEmptyState from "../../components/ui/SEmptyState.vue";
 import SErrorState from "../../components/ui/SErrorState.vue";
 import SLoadingState from "../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../components/ui/SPageHeader.vue";
+import SStatCard from "../../components/ui/SStatCard.vue";
 import { useSessionStore } from "../../stores/session";
 
 const session = useSessionStore();
-const canvas = ref<HTMLCanvasElement | null>(null);
-let chart: Chart | null = null;
 const greeting = computed(() => {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -30,20 +29,7 @@ const nextAction = computed(() => {
 onMounted(async () => {
   await session.loadDashboard();
   if (session.isStudent) await session.loadExamOutcome();
-  renderChart();
 });
-onBeforeUnmount(() => chart?.destroy());
-watch(() => session.dashboard, () => renderChart());
-
-function renderChart() {
-  if (!canvas.value || !session.dashboard) return;
-  chart?.destroy();
-  chart = new Chart(canvas.value, {
-    type: "bar",
-    data: { labels: session.dashboard.chart.labels, datasets: [{ data: session.dashboard.chart.values, backgroundColor: "#0F6E6E", borderRadius: 4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
-  });
-}
 </script>
 
 <template>
@@ -53,10 +39,7 @@ function renderChart() {
     <SErrorState v-else-if="session.error && !session.dashboard" :message="session.error" @retry="session.loadDashboard" />
     <template v-else-if="session.dashboard">
       <dl class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div v-for="metric in session.dashboard.metrics" :key="metric.label" class="rounded-md border border-hairline bg-surface p-5">
-          <dt class="text-sm text-ink-500">{{ metric.label }}</dt>
-          <dd class="mt-2 font-display text-3xl font-semibold text-ink-900">{{ metric.value }}</dd>
-        </div>
+        <SStatCard v-for="metric in session.dashboard.metrics" :key="metric.label" :label="metric.label" :value="metric.value" />
       </dl>
       <section class="flex flex-wrap items-center justify-between gap-5 rounded-lg border border-primary-200 bg-primary-50 p-5">
         <div>
@@ -66,10 +49,7 @@ function renderChart() {
         <RouterLink :to="nextAction.to" class="rounded-md bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500">{{ nextAction.label }}</RouterLink>
       </section>
       <section v-if="session.isStudent && session.examOutcome?.outcomes.length" class="rounded-lg border border-hairline bg-surface p-5"><div class="flex items-center justify-between gap-3"><div><p class="s-eyebrow">Five-minute decay drills</p><p class="mt-1 text-sm text-ink-600">Review the concepts most likely to fade before your exam.</p></div><RouterLink to="/app/exam-outcome" class="text-sm font-semibold text-primary-700 hover:underline">See exam outlook</RouterLink></div><div class="mt-4 grid gap-3 md:grid-cols-3"><RouterLink v-for="item in session.examOutcome.outcomes.slice(0, 3)" :key="item.concept_id" :to="`/app/learn/${item.concept_id}`" class="rounded-md border border-hairline bg-paper p-4 hover:border-primary-500"><p class="font-semibold text-ink-900">{{ item.title }}</p><p class="mt-1 text-xs text-ink-500">{{ Math.round(item.risk * 100) }}% forecast risk</p><p class="mt-3 text-sm font-semibold text-primary-700">Start drill</p></RouterLink></div></section>
-      <section class="rounded-lg border border-hairline bg-surface p-5">
-        <p class="s-eyebrow">{{ session.dashboard.chart.label }}</p>
-        <div class="mt-4 h-64"><canvas ref="canvas" /></div>
-      </section>
+      <SChart :label="session.dashboard.chart.label" :labels="session.dashboard.chart.labels" :values="session.dashboard.chart.values" />
       <section v-if="session.dashboard.classrooms.length" class="rounded-lg border border-hairline bg-surface p-5">
         <div class="flex items-center justify-between gap-4">
           <p class="s-eyebrow">Classrooms</p>
