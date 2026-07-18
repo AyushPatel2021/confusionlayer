@@ -28,6 +28,7 @@ from app.main import (
     grade_teach_back_endpoint,
     recompute_forecasts,
     student_syllabus,
+    student_report_card,
     tutorial,
     unlock_chapter,
 )
@@ -42,6 +43,7 @@ from app.models import (
     ForecastRecord,
     MasteryRecord,
     MisconceptionTaxonomy,
+    Organization,
     QuizAttempt,
     Student,
     Subject,
@@ -73,6 +75,11 @@ class LearningApiTest(TestCase):
         self.assertEqual(response.classroom.id, self.classroom.id)
         self.assertEqual(response.classroom.subject.name, "CBSE Class 10 Science")
         self.assertEqual(response.student_count, 1)
+
+    def test_student_report_card_uses_effective_mastery(self) -> None:
+        report = student_report_card(self.student.id, current_user=self.teacher_user, db=self.db)
+        self.assertEqual(report["student_name"], self.student.name)
+        self.assertEqual(report["learning"][0]["mastery"], 0.3332)
 
     def test_student_syllabus_respects_unlock_state(self) -> None:
         response = student_syllabus(current_user=self.student_user, db=self.db)
@@ -397,4 +404,9 @@ class LearningApiTest(TestCase):
             SignupRequest(email="student@example.com", password="password123", role="student", name="Student Login"),
         )
         self.student_user.student_id = student.id
+        org = Organization(name="Test School", slug="test-school", segment="school")
+        self.db.add(org)
+        self.db.flush()
+        self.teacher_user.org_id = org.id
+        self.student_user.org_id = org.id
         self.db.commit()

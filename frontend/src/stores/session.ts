@@ -372,7 +372,7 @@ export interface Dashboard {
 export interface OrganizationSettings { id: number; name: string; slug: string; segment: string; logo_url: string | null; timezone: string; currency: string; }
 export interface SearchResult { kind: string; title: string; subtitle: string; href: string; }
 export interface NotificationItem { id: number; title: string; body: string | null; href: string | null; read: boolean; created_at: string; }
-export interface StudentReport { student_id: number; student_name: string; learning: Array<{ concept: string; chapter: string; mastery: number }>; fees: { outstanding_cents: number }; attendance: Record<string, number>; }
+export interface StudentReport { student_id: number; student_name: string; profile: { roll_number: string | null; section: string | null; date_of_birth: string | null; guardian_name: string | null; guardian_phone: string | null }; learning: Array<{ concept: string; chapter: string; mastery: number }>; fees: { outstanding_cents: number }; attendance: Record<string, number>; }
 export interface AttendanceStudent { id: number; name: string; status: "present" | "absent" | "late" | "excused" | null; note: string | null; }
 export interface TimetableEntry { id: number; classroom_id: number; classroom: string; weekday: number; starts_at: string; ends_at: string; room: string | null; }
 export interface LibraryBook { id: number; title: string; author: string | null; isbn: string | null; copies_total: number; copies_available: number; }
