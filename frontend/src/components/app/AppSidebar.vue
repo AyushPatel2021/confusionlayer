@@ -45,6 +45,7 @@ const links = computed(() => {
   const classroomItems = [
     { to: "/app/dashboard", label: "Overview", icon: Building2 },
     { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
+    { to: "/app/teacher/students", label: "Student insights", icon: UsersRound },
     { to: "/app/curriculum", label: "Curriculum", icon: FolderKanban },
     { to: "/app/teacher/forecast", label: "Forecast brief", icon: CalendarClock },
     { to: "/app/teacher/confusion", label: "Confusion brief", icon: AlertTriangle },

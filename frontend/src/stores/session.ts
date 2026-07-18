@@ -183,6 +183,14 @@ export interface StudentProgress {
   concepts: ProgressConcept[];
 }
 
+export interface StudentInsights {
+  student_id: number;
+  student_name: string;
+  average_effective_mastery: number;
+  strengths: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
+  weaknesses: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
+}
+
 export interface CurriculumSubject {
   id: number;
   name: string;
@@ -244,6 +252,7 @@ export interface OrgMember {
   email: string;
   role: string;
   status: string;
+  department: string;
 }
 
 export interface PendingInvite {
@@ -372,6 +381,7 @@ export const useSessionStore = defineStore("session", {
     confusionNarratives: {} as Record<number, BriefNarrative>,
     selfStartTutorial: null as Tutorial | null,
     progress: null as StudentProgress | null,
+    studentInsights: null as StudentInsights | null,
     curriculumSubjects: [] as CurriculumSubject[],
     curriculumTree: null as CurriculumTree | null,
     importDraft: null as DraftChapter[] | null,
@@ -887,6 +897,17 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async loadStudentInsights(classroomId: number, studentId: number) {
+      this.loading = "student-insights";
+      this.error = "";
+      try {
+        this.studentInsights = await api<StudentInsights>(`/api/teacher/classrooms/${classroomId}/students/${studentId}/insights`);
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
     async loadCurriculumSubjects() {
       this.loading = "curriculum";
       this.error = "";
@@ -1029,6 +1050,18 @@ export const useSessionStore = defineStore("session", {
       this.error = "";
       try {
         await api(`/api/org/members/${userId}/role`, { method: "POST", body: JSON.stringify({ role }) });
+        await this.loadMembers();
+      } catch (error) {
+        this.error = messageFromError(error);
+      } finally {
+        this.loading = "";
+      }
+    },
+    async changeMemberStatus(userId: number, status: "active" | "inactive") {
+      this.loading = `member-status-${userId}`;
+      this.error = "";
+      try {
+        await api(`/api/org/members/${userId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
         await this.loadMembers();
       } catch (error) {
         this.error = messageFromError(error);

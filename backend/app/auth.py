@@ -200,7 +200,7 @@ def user_response(user: User, organization: Organization | None = None) -> AuthU
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = db.scalar(select(User).where(User.email == normalize_email(email)))
-    if not user or not verify_password(password, user.password_hash):
+    if not user or user.status != "active" or not verify_password(password, user.password_hash):
         return None
     return user
 
@@ -219,7 +219,7 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
 
     user = db.get(User, int(user_id))
-    if not user:
+    if not user or user.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication user not found")
     return user
 

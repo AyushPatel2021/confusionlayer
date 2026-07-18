@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
@@ -14,6 +14,13 @@ const roles = ["teacher", "student", "school_admin", "accountant", "hr", "parent
 const guardianEmail = ref("");
 const guardianStudentId = ref("");
 const guardianDone = ref(false);
+const query = ref("");
+const department = ref("all");
+const visibleMembers = computed(() => session.members.filter((member) => {
+  const matchesQuery = `${member.name || ""} ${member.email} ${member.role}`.toLowerCase().includes(query.value.toLowerCase());
+  return matchesQuery && (department.value === "all" || member.department === department.value);
+}));
+const departments = computed(() => [...new Set(session.members.map((member) => member.department))]);
 
 onMounted(() => session.loadMembers());
 
@@ -30,6 +37,11 @@ async function link() {
     guardianStudentId.value = "";
     guardianDone.value = true;
   }
+}
+
+function setRole(userId: number, event: Event) {
+  const role = (event.target as HTMLSelectElement).value;
+  void session.changeMemberRole(userId, role);
 }
 </script>
 
@@ -61,17 +73,27 @@ async function link() {
       <p v-if="guardianDone" class="mt-2 text-sm text-success">Linked.</p>
     </div>
 
+    <div class="flex flex-wrap gap-3 rounded-lg border border-hairline bg-surface p-4">
+      <input v-model="query" class="s-input flex-1" placeholder="Search members" aria-label="Search members" />
+      <select v-model="department" class="s-input"><option value="all">All departments</option><option v-for="item in departments" :key="item" :value="item">{{ item }}</option></select>
+    </div>
     <SLoadingState v-if="session.loading === 'members' && !session.members.length" :rows="3" />
     <div v-else class="space-y-6">
       <div>
         <p class="s-eyebrow">Members ({{ session.members.length }})</p>
         <ul class="mt-3 divide-y divide-hairline overflow-hidden rounded-lg border border-hairline bg-surface">
-          <li v-for="m in session.members" :key="m.id" class="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+          <li v-for="m in visibleMembers" :key="m.id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
             <div>
               <p class="text-sm font-semibold text-ink-900">{{ m.name || m.email }}</p>
-              <p class="text-xs text-ink-500">{{ m.email }}</p>
+              <p class="text-xs text-ink-500">{{ m.email }} | {{ m.department }}</p>
             </div>
-            <SBadge :tone="m.role === 'owner' ? 'primary' : 'neutral'">{{ m.role.replace("_", " ") }}</SBadge>
+            <div class="flex flex-wrap items-center gap-2">
+              <select v-if="m.role !== 'owner' && !['teacher', 'student'].includes(m.role)" :value="m.role" class="s-input py-1 text-xs" @change="setRole(m.id, $event)">
+                <option v-for="item in roles" :key="item" :value="item">{{ item.replace('_', ' ') }}</option>
+              </select>
+              <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
+              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
+            </div>
           </li>
         </ul>
       </div>

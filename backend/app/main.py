@@ -366,6 +366,22 @@ class StudentProgressResponse(BaseModel):
     concepts: list[ProgressConceptResponse]
 
 
+class StudentInsightConceptResponse(BaseModel):
+    concept_id: int
+    title: str
+    chapter_title: str
+    effective_mastery: float
+    forecast_risk: float | None = None
+
+
+class StudentInsightsResponse(BaseModel):
+    student_id: int
+    student_name: str
+    average_effective_mastery: float
+    strengths: list[StudentInsightConceptResponse]
+    weaknesses: list[StudentInsightConceptResponse]
+
+
 class SubjectCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     board: str = Field(default="CBSE", max_length=80)
@@ -463,6 +479,7 @@ class MemberResponse(BaseModel):
     email: str
     role: str
     status: str
+    department: str
 
 
 class PendingInvitationResponse(BaseModel):
@@ -478,6 +495,10 @@ class MembersResponse(BaseModel):
 
 class ChangeRoleRequest(BaseModel):
     role: Literal["school_admin", "accountant", "hr", "teacher", "parent"]
+
+
+class ChangeMemberStatusRequest(BaseModel):
+    status: Literal["active", "inactive"]
 
 
 class ChangePlanRequest(BaseModel):
@@ -1219,6 +1240,50 @@ def student_progress(
     )
 
 
+@app.get("/api/teacher/classrooms/{classroom_id}/students/{student_id}/insights", response_model=StudentInsightsResponse)
+def student_insights(
+    classroom_id: int,
+    student_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudentInsightsResponse:
+    classroom = _require_teacher_classroom(db, current_user, classroom_id, "view student insights")
+    if not db.scalar(select(ClassroomStudent.id).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student_id)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student is not enrolled in this classroom")
+    student = db.get(Student, student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+    records = db.execute(
+        select(MasteryRecord, Concept, Chapter)
+        .join(Concept, MasteryRecord.concept_id == Concept.id)
+        .join(Chapter, Concept.chapter_id == Chapter.id)
+        .where(MasteryRecord.student_id == student.id, Chapter.subject_id == classroom.subject_id)
+    ).all()
+    risks = {
+        row.concept_id: row.predicted_difficulty
+        for row in db.scalars(select(ForecastRecord).where(ForecastRecord.student_id == student.id)).all()
+    }
+    concepts = [
+        StudentInsightConceptResponse(
+            concept_id=concept.id,
+            title=concept.title,
+            chapter_title=chapter.title,
+            effective_mastery=effective_mastery(record),
+            forecast_risk=risks.get(concept.id),
+        )
+        for record, concept, chapter in records
+    ]
+    ranked = sorted(concepts, key=lambda item: item.effective_mastery)
+    return StudentInsightsResponse(
+        student_id=student.id,
+        student_name=student.name,
+        average_effective_mastery=round(sum(item.effective_mastery for item in concepts) / len(concepts), 3) if concepts else 0,
+        strengths=list(reversed(ranked[-3:])),
+        weaknesses=ranked[:3],
+    )
+
+
 @dataclass
 class CurrentContext:
     user: User
@@ -1394,6 +1459,23 @@ def _require_school_owner(user: User, db: Session) -> Organization:
     if org.segment != "school":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Member management is available in school workspaces")
     return org
+
+
+def _member_department(role: str) -> str:
+    return {
+        "teacher": "Teaching & learning",
+        "accountant": "Accounts",
+        "hr": "HR",
+        "parent": "Family",
+        "school_admin": "Front-office",
+        "owner": "School leadership",
+        "admin": "School leadership",
+        "student": "Learning",
+    }.get(role, "Workspace")
+
+
+def _member_response(member: User) -> MemberResponse:
+    return MemberResponse(id=member.id, name=member.name, email=member.email, role=member.role, status=member.status, department=_member_department(member.role))
 
 
 def _current_org(db: Session, user: User) -> Organization:
@@ -1667,7 +1749,7 @@ def list_org_members(current_user: User = Depends(get_current_user), db: Session
         select(Invitation).where(Invitation.org_id == current_user.org_id, Invitation.accepted_at.is_(None)).order_by(Invitation.id)
     ).all()
     return MembersResponse(
-        members=[MemberResponse(id=m.id, name=m.name, email=m.email, role=m.role, status=m.status) for m in members],
+        members=[_member_response(m) for m in members],
         pending=[PendingInvitationResponse(id=p.id, email=p.email, role=p.role) for p in pending],
     )
 
@@ -1686,7 +1768,21 @@ def change_member_role(user_id: int, payload: ChangeRoleRequest, current_user: U
     member.role = payload.role
     db.commit()
     db.refresh(member)
-    return MemberResponse(id=member.id, name=member.name, email=member.email, role=member.role, status=member.status)
+    return _member_response(member)
+
+
+@app.patch("/api/org/members/{user_id}/status", response_model=MemberResponse)
+def change_member_status(user_id: int, payload: ChangeMemberStatusRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
+    _require_school_owner(current_user, db)
+    member = db.get(User, user_id)
+    if not member or member.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.id == current_user.id or member.role == "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The owner account cannot be deactivated here")
+    member.status = payload.status
+    db.commit()
+    db.refresh(member)
+    return _member_response(member)
 
 
 @app.get("/api/plans", response_model=list[PlanResponse])
