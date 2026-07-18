@@ -418,7 +418,7 @@ export const useSessionStore = defineStore("session", {
       state.user?.role === "platform_admin" ? "/admin" : "/app/dashboard",
   },
   actions: {
-    async demoLogin(role: "teacher" | "student") {
+    async demoLogin(role: "owner" | "school_admin" | "accountant" | "hr" | "teacher" | "student" | "parent") {
       this.loading = `demo-${role}`;
       this.error = "";
       try {

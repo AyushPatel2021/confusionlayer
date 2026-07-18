@@ -18,7 +18,7 @@ import re
 
 from app.db import get_db
 from app.mail import send_email
-from app.models import Invitation, Organization, PasswordReset, Plan, Student, Subscription, Teacher, User
+from app.models import GuardianLink, Invitation, Organization, PasswordReset, Plan, Student, Subscription, Teacher, User
 
 Role = Literal["admin", "teacher", "student"]
 Segment = Literal["school", "institute", "individual"]
@@ -43,7 +43,7 @@ class LoginRequest(BaseModel):
 
 
 class DemoLoginRequest(BaseModel):
-    role: Literal["teacher", "student"] = "teacher"
+    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent"] = "teacher"
 
 
 class RegisterRequest(BaseModel):
@@ -255,7 +255,10 @@ def create_user(db: Session, payload: SignupRequest) -> User:
     return user
 
 
-def get_or_create_demo_user(db: Session, role: Literal["teacher", "student"]) -> User:
+def get_or_create_demo_user(
+    db: Session,
+    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent"],
+) -> User:
     email = f"demo.{role}@confusionlayer.local"
     existing = db.scalar(select(User).where(User.email == email))
     if existing:
@@ -268,13 +271,23 @@ def get_or_create_demo_user(db: Session, role: Literal["teacher", "student"]) ->
         if not teacher:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo teacher seed data is missing")
         user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id)
-    else:
+    elif role == "student":
         student = db.scalar(select(Student).order_by(Student.id))
         if not student:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo student seed data is missing")
         user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id)
+    else:
+        if not org:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo organization seed data is missing")
+        names = {"owner": "Demo Owner", "school_admin": "Demo School Admin", "accountant": "Demo Accountant", "hr": "Demo HR", "parent": "Demo Parent"}
+        user = User(email=email, name=names[role], password_hash=hash_password(secrets.token_urlsafe(32)), role=role, org_id=org.id)
 
     db.add(user)
+    db.flush()
+    if role == "parent":
+        student = db.scalar(select(Student).order_by(Student.id))
+        if student:
+            db.add(GuardianLink(org_id=org.id, parent_user_id=user.id, student_id=student.id))
     db.commit()
     db.refresh(user)
     return user

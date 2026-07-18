@@ -10,12 +10,13 @@ const session = useSessionStore();
 const router = useRouter();
 const email = ref("");
 const password = ref("");
+const demoRoles = ["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent"] as const;
 
 async function submit() {
   if (await session.login(email.value, password.value)) router.push("/app");
 }
 
-async function demo(role: "teacher" | "student") {
+async function demo(role: "owner" | "school_admin" | "accountant" | "hr" | "teacher" | "student" | "parent") {
   await session.demoLogin(role);
   router.push("/app");
 }
@@ -56,9 +57,8 @@ async function demo(role: "teacher" | "student") {
 
       <div class="mt-6 border-t border-hairline pt-5">
         <p class="text-center text-xs font-medium uppercase tracking-wide text-ink-500">Or explore the sample school</p>
-        <div class="mt-3 flex gap-2">
-          <SButton variant="secondary" block :disabled="!!session.loading" @click="demo('teacher')">Teacher demo</SButton>
-          <SButton variant="secondary" block :disabled="!!session.loading" @click="demo('student')">Student demo</SButton>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <SButton v-for="role in demoRoles" :key="role" variant="secondary" block :disabled="!!session.loading" @click="demo(role)">{{ role.replace('_', ' ') }} demo</SButton>
         </div>
       </div>
     </SCard>
