@@ -11,6 +11,9 @@ const session = useSessionStore();
 const email = ref("");
 const role = ref("teacher");
 const roles = ["teacher", "student", "school_admin", "accountant", "hr", "parent"];
+const inviteDepartment = ref("Teaching & learning");
+const departmentOptions = ["Teaching & learning", "Admissions", "Accounts", "HR", "Front-office", "Family", "Learning", "Workspace"];
+const departmentsForRole: Record<string, string> = { teacher: "Teaching & learning", student: "Learning", school_admin: "Front-office", accountant: "Accounts", hr: "HR", parent: "Family" };
 const guardianEmail = ref("");
 const guardianStudentId = ref("");
 const guardianDone = ref(false);
@@ -25,8 +28,9 @@ const departments = computed(() => [...new Set(session.members.map((member) => m
 onMounted(() => session.loadMembers());
 
 async function invite() {
-  if (await session.inviteMember(email.value, role.value)) email.value = "";
+  if (await session.inviteMember(email.value, role.value, inviteDepartment.value)) email.value = "";
 }
+function roleChanged() { inviteDepartment.value = departmentsForRole[role.value] || "Workspace"; }
 
 async function link() {
   const id = Number(guardianStudentId.value);
@@ -43,6 +47,8 @@ function setRole(userId: number, event: Event) {
   const role = (event.target as HTMLSelectElement).value;
   void session.changeMemberRole(userId, role);
 }
+function setDepartment(userId: number, event: Event) { void session.changeMemberDepartment(userId, (event.target as HTMLSelectElement).value); }
+function removeMember(member: { id: number; name: string | null; email: string }) { if (window.confirm(`Remove ${member.name || member.email} from this workspace? The account will be deactivated and historical records retained.`)) void session.removeMember(member.id); }
 </script>
 
 <template>
@@ -52,10 +58,11 @@ function setRole(userId: number, event: Event) {
     <form class="flex flex-wrap items-end gap-3 rounded-lg border border-hairline bg-surface p-5" @submit.prevent="invite">
       <label class="flex-1 text-sm">Email<input v-model="email" type="email" class="s-input mt-1" required /></label>
       <label class="text-sm">Role
-        <select v-model="role" class="s-input mt-1 capitalize">
+        <select v-model="role" class="s-input mt-1 capitalize" @change="roleChanged">
           <option v-for="r in roles" :key="r" :value="r">{{ r.replace("_", " ") }}</option>
         </select>
       </label>
+      <label class="text-sm">Department<select v-model="inviteDepartment" class="s-input mt-1"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select></label>
       <SButton type="submit" variant="primary" :disabled="!email.trim() || session.loading === 'invite-member'">
         {{ session.loading === "invite-member" ? "Inviting..." : "Send invite" }}
       </SButton>
@@ -91,8 +98,10 @@ function setRole(userId: number, event: Event) {
               <select v-if="m.role !== 'owner' && !['teacher', 'student'].includes(m.role)" :value="m.role" class="s-input py-1 text-xs" @change="setRole(m.id, $event)">
                 <option v-for="item in roles" :key="item" :value="item">{{ item.replace('_', ' ') }}</option>
               </select>
+              <select v-if="m.role !== 'owner'" :value="m.department" class="s-input py-1 text-xs" @change="setDepartment(m.id, $event)"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select>
               <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
               <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
+              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="removeMember(m)">Remove</SButton>
             </div>
           </li>
         </ul>
@@ -103,7 +112,7 @@ function setRole(userId: number, event: Event) {
         <ul class="mt-3 divide-y divide-hairline overflow-hidden rounded-lg border border-dashed border-hairline bg-surface">
           <li v-for="p in session.pendingInvites" :key="p.id" class="flex items-center justify-between gap-2 px-5 py-3">
             <span class="text-sm text-ink-700">{{ p.email }}</span>
-            <SBadge tone="warning">{{ p.role.replace("_", " ") }} | pending</SBadge>
+            <SBadge tone="warning">{{ p.role.replace("_", " ") }} | {{ p.department }} | pending</SBadge>
           </li>
         </ul>
       </div>

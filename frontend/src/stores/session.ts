@@ -15,6 +15,8 @@ interface User {
   id: number;
   email: string;
   role: Role;
+  department: string;
+  profile: Record<string, string>;
   name: string | null;
   org_id: number | null;
   org_name: string | null;
@@ -24,6 +26,7 @@ interface User {
 export interface InvitationPreview {
   email: string;
   role: string;
+  department: string;
   organization_name: string;
 }
 
@@ -255,12 +258,14 @@ export interface OrgMember {
   role: string;
   status: string;
   department: string;
+  profile: Record<string, string>;
 }
 
 export interface PendingInvite {
   id: number;
   email: string;
   role: string;
+  department: string;
 }
 
 export interface AdmissionApplication {
@@ -562,13 +567,13 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async acceptInvitation(token: string, password: string, name: string): Promise<boolean> {
+    async acceptInvitation(token: string, password: string, name: string, profile: Record<string, string> = {}): Promise<boolean> {
       this.loading = "accept";
       this.error = "";
       try {
         const response = await api<AuthResponse>("/api/auth/invitations/accept", {
           method: "POST",
-          body: JSON.stringify({ token, password, name }),
+          body: JSON.stringify({ token, password, name, profile }),
         });
         this.applyAuth(response);
         await this.loadSyllabus().catch(() => undefined);
@@ -1093,11 +1098,11 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
-    async inviteMember(email: string, role: string): Promise<boolean> {
+    async inviteMember(email: string, role: string, department: string): Promise<boolean> {
       this.loading = "invite-member";
       this.error = "";
       try {
-        await api("/api/org/invitations", { method: "POST", body: JSON.stringify({ email, role }) });
+        await api("/api/org/invitations", { method: "POST", body: JSON.stringify({ email, role, department }) });
         await this.loadMembers();
         return true;
       } catch (error) {
@@ -1130,6 +1135,18 @@ export const useSessionStore = defineStore("session", {
       } finally {
         this.loading = "";
       }
+    },
+    async changeMemberDepartment(userId: number, department: string) {
+      this.loading = `member-department-${userId}`; this.error = "";
+      try { await api(`/api/org/members/${userId}/department`, { method: "PATCH", body: JSON.stringify({ department }) }); await this.loadMembers(); }
+      catch (error) { this.error = messageFromError(error); }
+      finally { this.loading = ""; }
+    },
+    async removeMember(userId: number) {
+      this.loading = `member-remove-${userId}`; this.error = "";
+      try { await api(`/api/org/members/${userId}`, { method: "DELETE" }); await this.loadMembers(); }
+      catch (error) { this.error = messageFromError(error); }
+      finally { this.loading = ""; }
     },
     async loadPlans() {
       this.loading = "plans";

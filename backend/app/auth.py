@@ -66,17 +66,20 @@ class ResetPasswordRequest(BaseModel):
 class InvitationCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     role: Literal["school_admin", "accountant", "hr", "teacher", "student", "parent"]
+    department: str = Field(default="Workspace", min_length=2, max_length=80)
 
 
 class InvitationAcceptRequest(BaseModel):
     token: str = Field(min_length=8, max_length=200)
     password: str = Field(min_length=8, max_length=128)
     name: str = Field(min_length=1, max_length=120)
+    profile: dict[str, str] = Field(default_factory=dict)
 
 
 class InvitationPreviewResponse(BaseModel):
     email: str
     role: str
+    department: str
     organization_name: str
 
 
@@ -85,6 +88,8 @@ class AuthUserResponse(BaseModel):
     email: str
     name: str | None = None
     role: str
+    department: str = "Workspace"
+    profile: dict[str, str] = Field(default_factory=dict)
     org_id: int | None = None
     org_name: str | None = None
     segment: str | None = None
@@ -190,6 +195,8 @@ def user_response(user: User, organization: Organization | None = None) -> AuthU
         email=user.email,
         name=profile_name,
         role=user.role,
+        department=user.department,
+        profile=user.profile_data or {},
         org_id=user.org_id,
         org_name=organization.name if organization else None,
         segment=organization.segment if organization else None,
@@ -270,17 +277,18 @@ def get_or_create_demo_user(
         teacher = db.scalar(select(Teacher).order_by(Teacher.id))
         if not teacher:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo teacher seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id)
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id, department="Teaching & learning")
     elif role == "student":
         student = db.scalar(select(Student).order_by(Student.id))
         if not student:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo student seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id)
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id, department="Learning")
     else:
         if not org:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo organization seed data is missing")
         names = {"owner": "Demo Owner", "school_admin": "Demo School Admin", "accountant": "Demo Accountant", "hr": "Demo HR", "parent": "Demo Parent"}
-        user = User(email=email, name=names[role], password_hash=hash_password(secrets.token_urlsafe(32)), role=role, org_id=org.id)
+        departments = {"owner": "School leadership", "school_admin": "Front-office", "accountant": "Accounts", "hr": "HR", "parent": "Family"}
+        user = User(email=email, name=names[role], password_hash=hash_password(secrets.token_urlsafe(32)), role=role, org_id=org.id, department=departments[role])
 
     db.add(user)
     db.flush()
@@ -334,6 +342,7 @@ def register_org(db: Session, payload: RegisterRequest) -> tuple[User, Organizat
         name=payload.name.strip(),
         password_hash=hash_password(payload.password),
         role="owner",
+        department="School leadership",
     )
     db.add(user)
     db.commit()
@@ -365,11 +374,12 @@ def reset_password(db: Session, token: str, new_password: str) -> None:
     db.commit()
 
 
-def create_invitation(db: Session, org: Organization, inviter: User, email: str, role: str) -> Invitation:
+def create_invitation(db: Session, org: Organization, inviter: User, email: str, role: str, department: str = "Workspace") -> Invitation:
     invitation = Invitation(
         org_id=org.id,
         email=normalize_email(email),
         role=role,
+        department=department,
         token=secrets.token_urlsafe(32),
         invited_by=inviter.id,
         expires_at=datetime.now(UTC) + timedelta(days=7),
@@ -388,7 +398,7 @@ def get_open_invitation(db: Session, token: str) -> Invitation:
     return invitation
 
 
-def accept_invitation(db: Session, token: str, password: str, name: str) -> tuple[User, Organization]:
+def accept_invitation(db: Session, token: str, password: str, name: str, profile: dict[str, str] | None = None) -> tuple[User, Organization]:
     invitation = get_open_invitation(db, token)
     if db.scalar(select(User).where(User.email == invitation.email)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
@@ -412,6 +422,8 @@ def accept_invitation(db: Session, token: str, password: str, name: str) -> tupl
         name=name.strip(),
         password_hash=hash_password(password),
         role=invitation.role,
+        department=invitation.department,
+        profile_data={key: value.strip() for key, value in (profile or {}).items() if value.strip()},
         teacher_id=teacher_id,
         student_id=student_id,
     )

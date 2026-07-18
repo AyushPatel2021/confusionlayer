@@ -114,7 +114,7 @@ class OnboardingTest(TestCase):
         self._register_owner(email="inviteowner@school.test")
         owner = self.db.scalar(select(User).where(User.email == "inviteowner@school.test"))
         result = create_org_invitation(
-            InvitationCreateRequest(email="teacher@school.test", role="teacher"),
+            InvitationCreateRequest(email="teacher@school.test", role="teacher", department="Teaching & learning"),
             current_user=owner,
             db=self.db,
         )
@@ -123,9 +123,10 @@ class OnboardingTest(TestCase):
         preview = invitation_preview(token=token, db=self.db)
         self.assertEqual(preview.email, "teacher@school.test")
         self.assertEqual(preview.role, "teacher")
+        self.assertEqual(preview.department, "Teaching & learning")
 
         resp = invitation_accept(
-            InvitationAcceptRequest(token=token, password="password123", name="New Teacher"),
+            InvitationAcceptRequest(token=token, password="password123", name="New Teacher", profile={"phone": "9999999999"}),
             response=Response(),
             db=self.db,
         )
@@ -133,6 +134,8 @@ class OnboardingTest(TestCase):
         self.assertEqual(resp.user.org_id, owner.org_id)
         new_user = self.db.scalar(select(User).where(User.email == "teacher@school.test"))
         self.assertIsNotNone(new_user.teacher_id)
+        self.assertEqual(new_user.department, "Teaching & learning")
+        self.assertEqual(new_user.profile_data["phone"], "9999999999")
 
         # token cannot be reused
         with self.assertRaises(HTTPException) as exc:

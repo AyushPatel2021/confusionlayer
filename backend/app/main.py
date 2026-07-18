@@ -64,6 +64,7 @@ from app.models import (
     ConfusionBrief,
     ForecastRecord,
     Employee,
+    DEPARTMENTS,
     FeeStructure,
     GuardianLink,
     Invitation,
@@ -505,12 +506,14 @@ class MemberResponse(BaseModel):
     role: str
     status: str
     department: str
+    profile: dict[str, str] = Field(default_factory=dict)
 
 
 class PendingInvitationResponse(BaseModel):
     id: int
     email: str
     role: str
+    department: str
 
 
 class MembersResponse(BaseModel):
@@ -524,6 +527,10 @@ class ChangeRoleRequest(BaseModel):
 
 class ChangeMemberStatusRequest(BaseModel):
     status: Literal["active", "inactive"]
+
+
+class ChangeMemberDepartmentRequest(BaseModel):
+    department: str = Field(min_length=2, max_length=80)
 
 
 class ChangePlanRequest(BaseModel):
@@ -796,13 +803,14 @@ def invitation_preview(token: str, db: Session = Depends(get_db)) -> InvitationP
     return InvitationPreviewResponse(
         email=invitation.email,
         role=invitation.role,
+        department=invitation.department,
         organization_name=organization.name if organization else "",
     )
 
 
 @app.post("/api/auth/invitations/accept", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def invitation_accept(payload: InvitationAcceptRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
-    user, organization = accept_invitation(db, payload.token, payload.password, payload.name)
+    user, organization = accept_invitation(db, payload.token, payload.password, payload.name, payload.profile)
     token = create_access_token(user)
     set_auth_cookie(response, token)
     return AuthResponse(user=user_response(user, organization))
@@ -815,6 +823,8 @@ def create_org_invitation(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     organization = _require_school_owner(current_user, db)
+    if payload.department not in DEPARTMENTS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a valid department")
 
     # Plan gating: don't let a student invite push the org past its plan's student cap.
     if payload.role == "student":
@@ -829,8 +839,8 @@ def create_org_invitation(
                     detail=f"Your plan allows {max_students} students. Upgrade to invite more.",
                 )
 
-    invitation = create_invitation(db, organization, current_user, payload.email, payload.role)
-    return {"token": invitation.token, "email": invitation.email, "role": invitation.role}
+    invitation = create_invitation(db, organization, current_user, payload.email, payload.role, payload.department)
+    return {"token": invitation.token, "email": invitation.email, "role": invitation.role, "department": invitation.department}
 
 
 @app.get("/api/auth/me", response_model=AuthResponse)
@@ -1613,7 +1623,7 @@ def _member_department(role: str) -> str:
 
 
 def _member_response(member: User) -> MemberResponse:
-    return MemberResponse(id=member.id, name=member.name, email=member.email, role=member.role, status=member.status, department=_member_department(member.role))
+    return MemberResponse(id=member.id, name=member.name, email=member.email, role=member.role, status=member.status, department=member.department or _member_department(member.role), profile=member.profile_data or {})
 
 
 def _current_org(db: Session, user: User) -> Organization:
@@ -1892,7 +1902,7 @@ def list_org_members(q: str = "", offset: int = 0, limit: int = 100, current_use
     ).all()
     return MembersResponse(
         members=[_member_response(m) for m in members],
-        pending=[PendingInvitationResponse(id=p.id, email=p.email, role=p.role) for p in pending],
+        pending=[PendingInvitationResponse(id=p.id, email=p.email, role=p.role, department=p.department) for p in pending],
     )
 
 
@@ -1924,6 +1934,36 @@ def change_member_status(user_id: int, payload: ChangeMemberStatusRequest, curre
     member.status = payload.status
     db.commit()
     db.refresh(member)
+    return _member_response(member)
+
+
+@app.patch("/api/org/members/{user_id}/department", response_model=MemberResponse)
+def change_member_department(user_id: int, payload: ChangeMemberDepartmentRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
+    _require_school_owner(current_user, db)
+    if payload.department not in DEPARTMENTS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a valid department")
+    member = db.get(User, user_id)
+    if not member or member.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.role == "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The owner department cannot be changed")
+    member.department = payload.department
+    _audit(db, current_user, "member.department_changed", member.email, {"department": member.department})
+    db.commit(); db.refresh(member)
+    return _member_response(member)
+
+
+@app.delete("/api/org/members/{user_id}", response_model=MemberResponse)
+def remove_member(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
+    _require_school_owner(current_user, db)
+    member = db.get(User, user_id)
+    if not member or member.org_id != current_user.org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.id == current_user.id or member.role == "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The owner account cannot be removed")
+    member.status = "inactive"
+    _audit(db, current_user, "member.removed", member.email)
+    db.commit(); db.refresh(member)
     return _member_response(member)
 
 

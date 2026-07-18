@@ -13,6 +13,7 @@ class Base(DeclarativeBase):
 
 # Go-to-market segments; select which module bundle an org uses.
 ORG_SEGMENTS = ("school", "institute", "individual")
+DEPARTMENTS = ("Teaching & learning", "Admissions", "Accounts", "HR", "Front-office", "Family", "School leadership", "Learning", "Workspace")
 
 
 class Organization(Base):
@@ -84,6 +85,7 @@ class Invitation(Base):
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(40), nullable=False)
+    department: Mapped[str] = mapped_column(String(80), default="Workspace", server_default="Workspace", nullable=False)
     token: Mapped[str] = mapped_column(String(120), nullable=False)
     invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -186,6 +188,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
+    department: Mapped[str] = mapped_column(String(80), default="Workspace", server_default="Workspace", nullable=False)
+    profile_data: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id", ondelete="SET NULL"), nullable=True)

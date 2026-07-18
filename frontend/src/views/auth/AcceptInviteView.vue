@@ -14,6 +14,8 @@ const invitation = ref<InvitationPreview | null>(null);
 const loaded = ref(false);
 const name = ref("");
 const password = ref("");
+const phone = ref("");
+const rollNumber = ref("");
 
 onMounted(async () => {
   invitation.value = await session.fetchInvitation(token);
@@ -21,7 +23,7 @@ onMounted(async () => {
 });
 
 async function submit() {
-  if (await session.acceptInvitation(token, password.value, name.value)) router.push("/app");
+  if (await session.acceptInvitation(token, password.value, name.value, { phone: phone.value, roll_number: rollNumber.value })) router.push("/app");
 }
 </script>
 
@@ -52,6 +54,8 @@ async function submit() {
             <label class="text-sm font-medium text-ink-700" for="password">Create a password</label>
             <input id="password" v-model="password" type="password" autocomplete="new-password" class="s-input mt-1" minlength="8" required />
           </div>
+          <div><label class="text-sm font-medium text-ink-700" for="phone">Phone (optional)</label><input id="phone" v-model="phone" class="s-input mt-1" autocomplete="tel" /></div>
+          <div v-if="invitation.role === 'student'"><label class="text-sm font-medium text-ink-700" for="roll-number">Roll number (optional)</label><input id="roll-number" v-model="rollNumber" class="s-input mt-1" /></div>
           <p v-if="session.error" class="rounded-sm border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
             {{ session.error }}
           </p>
