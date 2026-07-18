@@ -971,6 +971,18 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async updateCurriculumItem(path: string, payload: { title?: string; name?: string; board?: string; class_level?: string }, subjectId: number) {
+      this.loading = "curriculum-edit"; this.error = "";
+      try { await api(path, { method: "PATCH", body: JSON.stringify(payload) }); await this.loadCurriculumSubjects(); await this.loadSubjectTree(subjectId); }
+      catch (error) { this.error = messageFromError(error); }
+      finally { this.loading = ""; }
+    },
+    async deleteCurriculumItem(path: string, subjectId?: number) {
+      this.loading = "curriculum-edit"; this.error = "";
+      try { await api(path, { method: "DELETE" }); await this.loadCurriculumSubjects(); if (subjectId) await this.loadSubjectTree(subjectId); else this.curriculumTree = null; }
+      catch (error) { this.error = messageFromError(error); }
+      finally { this.loading = ""; }
+    },
     async importPdf(file: File): Promise<boolean> {
       this.loading = "import";
       this.error = "";

@@ -1383,6 +1383,21 @@ def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User 
     )
 
 
+@app.patch("/api/curriculum/subjects/{subject_id}", response_model=CurriculumSubjectResponse)
+def update_curriculum_subject(subject_id: int, payload: SubjectCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumSubjectResponse:
+    subject = _editable_subject(db, current_user, subject_id)
+    subject.name, subject.board, subject.class_level = payload.name.strip(), payload.board.strip(), payload.class_level.strip()
+    db.commit()
+    return CurriculumSubjectResponse(id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level, org_id=subject.org_id, shared=False, chapter_count=len(subject.chapters))
+
+
+@app.delete("/api/curriculum/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_curriculum_subject(subject_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    db.delete(_editable_subject(db, current_user, subject_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/api/curriculum/subjects/{subject_id}", response_model=CurriculumTreeResponse)
 def get_curriculum_subject(subject_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
     _require_curriculum_editor(current_user)
@@ -1415,6 +1430,40 @@ def add_curriculum_concept(chapter_id: int, payload: ConceptCreateRequest, curre
     db.commit()
     db.refresh(concept)
     return CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
+
+
+@app.patch("/api/curriculum/chapters/{chapter_id}", response_model=CurriculumChapterNode)
+def update_curriculum_chapter(chapter_id: int, payload: ChapterCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumChapterNode:
+    chapter = db.get(Chapter, chapter_id)
+    if not chapter: raise HTTPException(status_code=404, detail="Chapter not found")
+    _editable_subject(db, current_user, chapter.subject_id)
+    chapter.title = payload.title.strip(); db.commit()
+    return CurriculumChapterNode(id=chapter.id, title=chapter.title, order=chapter.order, concepts=[CurriculumConceptNode(id=c.id, title=c.title, order=c.order) for c in chapter.concepts])
+
+
+@app.delete("/api/curriculum/chapters/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_curriculum_chapter(chapter_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    chapter = db.get(Chapter, chapter_id)
+    if not chapter: raise HTTPException(status_code=404, detail="Chapter not found")
+    _editable_subject(db, current_user, chapter.subject_id); db.delete(chapter); db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.patch("/api/curriculum/concepts/{concept_id}", response_model=CurriculumConceptNode)
+def update_curriculum_concept(concept_id: int, payload: ConceptCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumConceptNode:
+    concept = db.get(Concept, concept_id)
+    if not concept: raise HTTPException(status_code=404, detail="Topic not found")
+    _editable_subject(db, current_user, concept.chapter.subject_id)
+    concept.title = payload.title.strip(); db.commit()
+    return CurriculumConceptNode(id=concept.id, title=concept.title, order=concept.order)
+
+
+@app.delete("/api/curriculum/concepts/{concept_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_curriculum_concept(concept_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    concept = db.get(Concept, concept_id)
+    if not concept: raise HTTPException(status_code=404, detail="Topic not found")
+    _editable_subject(db, current_user, concept.chapter.subject_id); db.delete(concept); db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/api/curriculum/import", response_model=ImportDraftResponse)

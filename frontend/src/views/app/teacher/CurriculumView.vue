@@ -42,6 +42,14 @@ async function addConcept(chapterId: number) {
   await session.createConcept(selectedId.value, chapterId, title);
   newConcept.value[chapterId] = "";
 }
+function rename(path: string, current: string, subjectId: number, kind: "title" | "name" = "title") {
+  const value = window.prompt("Update name", current)?.trim();
+  if (!value) return;
+  void session.updateCurriculumItem(path, kind === "name" ? { name: value, board: tree.value?.board, class_level: tree.value?.class_level } : { title: value }, subjectId);
+}
+function remove(path: string, subjectId?: number) {
+  if (window.confirm("Delete this item and its dependent content?")) void session.deleteCurriculumItem(path, subjectId);
+}
 </script>
 
 <template>
@@ -81,16 +89,16 @@ async function addConcept(chapterId: number) {
       <section>
         <SEmptyState v-if="!tree" title="Select a subject" message="Pick a subject on the left, or create one, to manage its chapters and topics." />
         <div v-else class="space-y-5">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-3">
             <h2 class="font-display text-xl font-semibold text-ink-900">{{ tree.name }}</h2>
-            <SBadge v-if="!editable" tone="neutral">read-only</SBadge>
+            <div class="flex items-center gap-2"><SBadge v-if="!editable" tone="neutral">read-only</SBadge><template v-if="editable"><SButton variant="ghost" @click="rename(`/api/curriculum/subjects/${tree.id}`, tree.name, tree.id, 'name')">Edit</SButton><SButton variant="ghost" @click="remove(`/api/curriculum/subjects/${tree.id}`)">Delete</SButton></template></div>
           </div>
 
           <div v-for="chapter in tree.chapters" :key="chapter.id" class="rounded-lg border border-hairline bg-surface p-5">
-            <p class="font-display text-base font-semibold text-ink-900">{{ chapter.order }}. {{ chapter.title }}</p>
+            <div class="flex items-center justify-between gap-3"><p class="font-display text-base font-semibold text-ink-900">{{ chapter.order }}. {{ chapter.title }}</p><div v-if="editable" class="flex gap-2"><SButton variant="ghost" @click="rename(`/api/curriculum/chapters/${chapter.id}`, chapter.title, tree.id)">Edit</SButton><SButton variant="ghost" @click="remove(`/api/curriculum/chapters/${chapter.id}`, tree.id)">Delete</SButton></div></div>
             <ul class="mt-3 space-y-1">
-              <li v-for="c in chapter.concepts" :key="c.id" class="flex items-center gap-2 text-sm text-ink-700">
-                <span class="h-1 w-4 rounded-full bg-accent-600" aria-hidden="true" />{{ c.title }}
+              <li v-for="c in chapter.concepts" :key="c.id" class="flex items-center justify-between gap-2 text-sm text-ink-700">
+                <span><span class="mr-2 inline-block h-1 w-4 rounded-full bg-accent-600" aria-hidden="true" />{{ c.title }}</span><span v-if="editable" class="flex gap-1"><SButton variant="ghost" @click="rename(`/api/curriculum/concepts/${c.id}`, c.title, tree.id)">Edit</SButton><SButton variant="ghost" @click="remove(`/api/curriculum/concepts/${c.id}`, tree.id)">Delete</SButton></span>
               </li>
               <li v-if="!chapter.concepts.length" class="text-sm text-ink-500">No topics yet.</li>
             </ul>
