@@ -756,9 +756,9 @@ def seed_demo_showcase(session: Session) -> dict[str, int]:
         student = get_or_create(session, Student, name=name, defaults={"roll_number": f"10A-{index:02d}", "section": "10A", "guardian_name": "Demo Guardian", "guardian_phone": "9000000000"})
         school_students.append(student)
         get_or_create(session, ClassroomStudent, classroom_id=school_classroom.id, student_id=student.id)
-        if index <= 4:
-            _ensure_user(session, email=f"demo.school.student{index}@confusionlayer.local", name=name, role="student", org_id=school.id, department="Learning", student_id=student.id)
-    school_users["student"] = _ensure_user(session, email="demo.school.student@confusionlayer.local", name=school_students[0].name, role="student", org_id=school.id, department="Learning", student_id=school_students[0].id)
+        email = "demo.school.student@confusionlayer.local" if index == 1 else f"demo.school.student{index}@confusionlayer.local"
+        _ensure_user(session, email=email, name=name, role="student", org_id=school.id, department="Learning", student_id=student.id)
+    school_users["student"] = session.scalar(select(User).where(User.email == "demo.school.student@confusionlayer.local"))
     school_users["parent"] = _ensure_user(session, email="demo.school.parent@confusionlayer.local", name="Meera Mehta", role="parent", org_id=school.id, department="Family")
     _seed_learning_records(session, classroom=school_classroom, students=school_students, concepts=school_concepts, now=now)
     _seed_school_operations(session, school, school_users, school_classroom, school_students)
