@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Chart from "chart.js/auto";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import SEmptyState from "./ui/SEmptyState.vue";
 import SLoadingState from "./ui/SLoadingState.vue";
@@ -11,13 +11,14 @@ const canvas = ref<HTMLCanvasElement | null>(null);
 let chart: Chart | null = null;
 
 const progress = computed(() => session.progress);
+const hasHistory = computed(() => averagedSeries().labels.length > 0);
 
 onMounted(() => {
   if (!session.progress) void session.loadProgress();
-  renderChart();
+  void renderChart();
 });
 onBeforeUnmount(() => chart?.destroy());
-watch(progress, () => renderChart());
+watch(progress, () => void renderChart(), { flush: "post" });
 
 function averagedSeries(): { labels: string[]; values: number[] } {
   const p = session.progress;
@@ -35,10 +36,16 @@ function averagedSeries(): { labels: string[]; values: number[] } {
   return { labels, values: labels.map((d) => Math.round((byDate.get(d)!.sum / byDate.get(d)!.count) * 100)) };
 }
 
-function renderChart() {
-  if (!canvas.value) return;
+async function renderChart() {
+  await nextTick();
+  if (!canvas.value) {
+    chart?.destroy();
+    chart = null;
+    return;
+  }
   const { labels, values } = averagedSeries();
   chart?.destroy();
+  chart = null;
   if (labels.length === 0) return;
   chart = new Chart(canvas.value, {
     type: "line",
@@ -88,7 +95,10 @@ function pct(v: number) {
 
       <div class="rounded-lg border border-hairline bg-surface p-5">
         <p class="s-eyebrow">Average mastery over time</p>
-        <div class="mt-3" style="position: relative; height: 16rem"><canvas ref="canvas" /></div>
+        <div v-if="hasHistory" class="mt-3" style="position: relative; height: 16rem"><canvas ref="canvas" /></div>
+        <div v-else class="mt-3 rounded-md border border-dashed border-hairline bg-surface-sunken px-4 py-10 text-center text-sm text-ink-500">
+          No dated mastery history yet. Complete a quiz or teach-back activity and the trend will appear here.
+        </div>
       </div>
 
       <div>
