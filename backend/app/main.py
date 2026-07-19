@@ -3042,14 +3042,34 @@ def admin_usage(current_user: User = Depends(get_current_user), db: Session = De
 def admin_list_users(limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[AdminUserResponse]:
     _require_platform_admin(current_user)
     users = db.scalars(select(User).order_by(User.id.desc()).limit(max(1, min(limit, 200)))).all()
-    return [AdminUserResponse(id=user.id, name=user.name, email=user.email, role=user.role, organization=db.get(Organization, user.org_id).name if user.org_id and db.get(Organization, user.org_id) else None, active=user.is_active) for user in users]
+    responses: list[AdminUserResponse] = []
+    for user in users:
+        organization = db.get(Organization, user.org_id) if user.org_id else None
+        responses.append(
+            AdminUserResponse(
+                id=user.id,
+                name=user.name,
+                email=user.email,
+                role=user.role,
+                organization=organization.name if organization else None,
+                active=user.status == "active",
+            )
+        )
+    return responses
 
 
 @app.get("/api/admin/content", response_model=AdminContentResponse)
 def admin_content_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AdminContentResponse:
     _require_platform_admin(current_user)
     count = lambda model: int(db.scalar(select(func.count(model.id))) or 0)  # noqa: E731
-    return AdminContentResponse(subjects=count(Subject), chapters=count(Chapter), concepts=count(Concept), concept_edges=count(ConceptEdge))
+    return AdminContentResponse(
+        subjects=count(Subject),
+        chapters=count(Chapter),
+        concepts=count(Concept),
+        concept_edges=count(ConceptEdge),
+        employees=count(Employee),
+        applications=count(AdmissionApplication),
+    )
 
 
 @app.get("/api/admin/audit-logs", response_model=list[AdminAuditLogResponse])

@@ -402,7 +402,7 @@ export interface AdminUsage {
 }
 export interface AdminAuditLog { id: number; action: string; target: string | null; organization: string | null; actor: string | null; created_at: string; }
 export interface AdminUser { id: number; name: string | null; email: string; role: string; organization: string | null; active: boolean; }
-export interface AdminContent { subjects: number; chapters: number; concepts: number; concept_edges: number; }
+export interface AdminContent { subjects: number; chapters: number; concepts: number; concept_edges: number; employees: number; applications: number; }
 
 export interface ClassroomMember {
   id: number;

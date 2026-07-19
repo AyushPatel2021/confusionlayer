@@ -101,6 +101,12 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend python -m app.seed
 ```
 
+To intentionally rebuild a demo database from scratch, use the guarded reset mode:
+
+```bash
+docker compose exec -e CONFUSIONLAYER_ALLOW_DB_RESET=1 backend python -m app.seed --reset-demo
+```
+
 Run backend tests:
 
 ```bash

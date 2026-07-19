@@ -17,7 +17,9 @@ from app.auth import RegisterRequest, register_org
 from app.main import (
     GuardianLinkRequest,
     InvoiceCreateRequest,
+    admin_content_summary,
     admin_list_orgs,
+    admin_list_users,
     admin_usage,
     create_invoice,
     link_guardian,
@@ -102,6 +104,23 @@ class ParentAdminTest(TestCase):
         self.assertGreaterEqual(usage.school_orgs, 1)
         self.assertGreaterEqual(usage.active_users, 1)
         self.assertGreaterEqual(usage.outstanding_cents, 0)
+
+    def test_platform_admin_lists_users_and_content_summary(self) -> None:
+        admin = User(org_id=None, email="root@slate.test", password_hash="x", role="platform_admin", name="Root", status="active")
+        self.db.add(admin)
+        self.db.commit()
+        users = admin_list_users(current_user=admin, db=self.db)
+        root = next(user for user in users if user.email == "root@slate.test")
+        self.assertTrue(root.active)
+        self.assertIsNone(root.organization)
+
+        content = admin_content_summary(current_user=admin, db=self.db)
+        self.assertGreaterEqual(content.subjects, 0)
+        self.assertGreaterEqual(content.chapters, 0)
+        self.assertGreaterEqual(content.concepts, 0)
+        self.assertGreaterEqual(content.concept_edges, 0)
+        self.assertGreaterEqual(content.employees, 0)
+        self.assertGreaterEqual(content.applications, 0)
 
     def test_non_admin_blocked_from_platform_endpoints(self) -> None:
         with self.assertRaises(HTTPException) as exc:

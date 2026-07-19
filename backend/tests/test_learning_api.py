@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.auth import SignupRequest, create_user
 from app.ai import DoubtChatContent, QuizGradeContent, TeachBackGradeContent, TutorialContent
+from app.mastery import days_since_review, effective_mastery
 from app.main import (
     DoubtChatRequest,
     QuizGradeRequest,
@@ -81,7 +82,10 @@ class LearningApiTest(TestCase):
     def test_student_report_card_uses_effective_mastery(self) -> None:
         report = student_report_card(self.student.id, current_user=self.teacher_user, db=self.db)
         self.assertEqual(report["student_name"], self.student.name)
-        self.assertEqual(report["learning"][0]["mastery"], 0.3332)
+        self.assertEqual(
+            report["learning"][0]["mastery"],
+            effective_mastery(0.68, days_since_review(datetime(2026, 7, 1, tzinfo=timezone.utc))),
+        )
 
     def test_student_confusion_map_returns_mastery_nodes(self) -> None:
         graph = student_confusion_map(current_user=self.student_user, db=self.db)
