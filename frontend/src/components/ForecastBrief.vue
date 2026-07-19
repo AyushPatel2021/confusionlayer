@@ -2,6 +2,7 @@
 import { computed } from "vue";
 
 import SBadge from "./ui/SBadge.vue";
+import SAIWorkingState from "./ui/SAIWorkingState.vue";
 import SButton from "./ui/SButton.vue";
 import SEmptyState from "./ui/SEmptyState.vue";
 import SLoadingState from "./ui/SLoadingState.vue";
@@ -78,7 +79,14 @@ const p = (v: number) => Math.round(v * 100);
           <SButton variant="primary" :disabled="!!session.loading" @click="session.generateForecastNarrative(c.concept_id)">
             {{ session.loading === `forecast-narrative-${c.concept_id}` ? "Writing brief..." : "Generate teaching brief" }}
           </SButton>
-          <div v-if="session.forecastNarratives[c.concept_id]" class="mt-3 rounded-md border border-hairline bg-paper p-4">
+          <SAIWorkingState
+            v-if="session.loading === `forecast-narrative-${c.concept_id}`"
+            class="mt-3"
+            title="Writing the teacher brief"
+            message="Codex is converting the deterministic forecast numbers into a short classroom action note."
+            detail="The risk counts stay formula-based; AI only writes the explanation and suggested activity."
+          />
+          <div v-else-if="session.forecastNarratives[c.concept_id]" class="mt-3 rounded-md border border-hairline bg-paper p-4">
             <p class="text-sm leading-6 text-ink-800">{{ session.forecastNarratives[c.concept_id].summary }}</p>
             <p class="mt-2 text-sm font-semibold text-ink-900">{{ session.forecastNarratives[c.concept_id].suggested_activity }}</p>
           </div>

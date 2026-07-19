@@ -378,9 +378,11 @@ def _tutorial_instructions() -> str:
         "should teach more than a definition.\n"
         "- worked_example: one concrete, fully worked example with the steps shown, so the student can follow the "
         "method, not just the answer.\n"
-        "- visual: a small plain-text/ASCII diagram, table, or labelled sketch (monospace, <= 12 lines) that "
-        "illustrates the concept — e.g. a labelled diagram, a comparison table, or a simple graph. If a visual would "
-        "not genuinely help this concept, return an empty string.\n"
+        "- visual: a compact but useful visual block (<= 16 lines). Prefer chart-ready tables for numeric "
+        "relationships, comparison tables for contrast concepts, and labelled diagrams for spatial/process concepts. "
+        "For a chart-ready table, use one x-axis row and one or more numeric series rows on separate lines, such as "
+        "'Angle: 0deg 30deg 60deg 90deg' then 'sin: 0 0.50 0.87 1.00' then 'cos: 1.00 0.87 0.50 0'. "
+        "If a visual would not genuinely help, return an empty string.\n"
         "Do not compute mastery scores. Do not invent curriculum scope beyond the provided concept context."
     )
 
@@ -393,7 +395,10 @@ def _self_start_instructions() -> str:
         "- explanation (180-260 words): clear, plain-language, standard explanation pitched at the reading level.\n"
         "- analogy: one relatable everyday example that makes the idea click.\n"
         "- worked_example: one concrete example with the steps shown.\n"
-        "- visual: a small plain-text/ASCII diagram or table (<= 12 lines), or an empty string if it wouldn't help.\n"
+        "- visual: a compact but useful visual block (<= 16 lines). Prefer chart-ready tables for numeric "
+        "relationships, comparison tables for contrast concepts, and labelled diagrams for spatial/process concepts. "
+        "For chart-ready tables, use one x-axis row and one or more numeric series rows. Return an empty string only "
+        "when a visual would not help.\n"
         "Stay on the student's topic; if the topic is unclear or not a real learning topic, give a brief, safe "
         "general explanation instead. Do not compute mastery scores."
     )
@@ -448,7 +453,8 @@ def _tutorial_input(concept: Concept, reading_level: str) -> str:
         f"Concept: {concept.title}\n"
         f"Reading level: {reading_level}\n\n"
         "Generate a tutorial aligned to this concept with a clear explanation, an everyday analogy, one worked "
-        "example, and a small ASCII visual when it helps. Return JSON only: "
+        "example, and a compact visual. If the concept has values, trends, or formulas, make visual a chart-ready "
+        "table with an x-axis row and numeric series rows. Return JSON only: "
         "{\"explanation\": string, \"analogy\": string, \"worked_example\": string, \"visual\": string}."
     )
 

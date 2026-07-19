@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { UploadCloud } from "@lucide/vue";
 
+import SAIWorkingState from "../../../components/ui/SAIWorkingState.vue";
 import SButton from "../../../components/ui/SButton.vue";
 import SCombobox from "../../../components/ui/SCombobox.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
@@ -109,6 +110,13 @@ async function refine() {
           {{ session.loading === "import" ? "Reading..." : "Choose PDF" }}
         </SButton>
       </div>
+      <SAIWorkingState
+        v-if="session.loading === 'import'"
+        class="mx-auto mt-5 max-w-2xl text-left"
+        title="Reading the PDF"
+        message="Slate is extracting headings and topic structure from the document in memory."
+        detail="The uploaded PDF is not stored. After extraction, you can review and clean the outline before saving."
+      />
       <p v-if="session.error" class="mt-3 text-sm text-danger">{{ session.error }}</p>
     </div>
 
@@ -124,6 +132,13 @@ async function refine() {
             {{ session.loading === "refine-import" ? "Cleaning..." : "Clean with Codex" }}
           </SButton>
         </div>
+        <SAIWorkingState
+          v-if="session.loading === 'refine-import'"
+          class="mt-4"
+          title="Cleaning the imported outline"
+          message="Codex is removing noisy page text, duplicate headings, and unclear topic names."
+          detail="You still review every chapter and topic before saving; the model is only helping prepare the draft."
+        />
         <div class="mt-4 grid gap-4 sm:grid-cols-3">
           <label class="text-sm">Subject name<input v-model="name" class="s-input mt-1" /></label>
           <label class="text-sm">Board<input v-model="board" class="s-input mt-1" /></label>

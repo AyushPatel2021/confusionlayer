@@ -2,6 +2,7 @@
 import { computed } from "vue";
 
 import SBadge from "./ui/SBadge.vue";
+import SAIWorkingState from "./ui/SAIWorkingState.vue";
 import SButton from "./ui/SButton.vue";
 import SEmptyState from "./ui/SEmptyState.vue";
 import SLoadingState from "./ui/SLoadingState.vue";
@@ -56,7 +57,14 @@ function sharePct(count: number, total: number) {
           <SButton variant="primary" :disabled="!!session.loading" @click="session.generateConfusionNarrative(c.concept_id)">
             {{ session.loading === `confusion-narrative-${c.concept_id}` ? "Writing brief..." : "Generate teaching brief" }}
           </SButton>
-          <div v-if="session.confusionNarratives[c.concept_id]" class="mt-3 rounded-md border border-hairline bg-paper p-4">
+          <SAIWorkingState
+            v-if="session.loading === `confusion-narrative-${c.concept_id}`"
+            class="mt-3"
+            title="Writing the teaching response"
+            message="Codex is turning the shared misconception pattern into a short intervention plan."
+            detail="Privacy thresholds and misconception counts come from the backend; AI only writes the teacher-facing text."
+          />
+          <div v-else-if="session.confusionNarratives[c.concept_id]" class="mt-3 rounded-md border border-hairline bg-paper p-4">
             <p class="text-sm leading-6 text-ink-800">{{ session.confusionNarratives[c.concept_id].summary }}</p>
             <p class="mt-2 text-sm font-semibold text-ink-900">{{ session.confusionNarratives[c.concept_id].suggested_activity }}</p>
           </div>

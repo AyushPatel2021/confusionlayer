@@ -3,9 +3,11 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
 import SBadge from "../../../components/ui/SBadge.vue";
+import SAIWorkingState from "../../../components/ui/SAIWorkingState.vue";
 import SButton from "../../../components/ui/SButton.vue";
 import SErrorState from "../../../components/ui/SErrorState.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
+import STutorialVisual from "../../../components/ui/STutorialVisual.vue";
 import { useSessionStore } from "../../../stores/session";
 
 const session = useSessionStore();
@@ -103,10 +105,16 @@ async function submitTeachBack() {
         <div class="flex items-center justify-between gap-3">
           <p class="s-eyebrow">Tutorial generator</p>
           <SButton variant="primary" :disabled="!!session.loading" @click="session.generateTutorial()">
-            {{ session.loading === "tutorial" ? "Generating..." : "Generate tutorial" }}
+            {{ session.loading === "tutorial" ? "Building tutorial..." : "Generate tutorial" }}
           </SButton>
         </div>
-        <div v-if="session.tutorial" class="space-y-4">
+        <SAIWorkingState
+          v-if="session.loading === 'tutorial'"
+          title="Building your tutorial"
+          message="Codex is turning this concept into an explanation, analogy, worked example, and visual."
+          detail="Keep this tab open. The result will appear here as soon as the model finishes."
+        />
+        <div v-else-if="session.tutorial" class="space-y-4">
           <div class="rounded-lg border border-hairline bg-surface p-5">
             <p class="s-eyebrow">Explanation</p>
             <p class="mt-3 whitespace-pre-line text-base leading-8 text-ink-800">{{ session.tutorial.explanation }}</p>
@@ -120,10 +128,7 @@ async function submitTeachBack() {
               <p class="s-eyebrow">Worked example</p>
               <p class="mt-3 whitespace-pre-line text-base leading-8 text-ink-800">{{ session.tutorial.worked_example }}</p>
             </div>
-            <div v-if="session.tutorial.visual" class="rounded-lg border border-hairline bg-ink-900 p-5">
-              <p class="text-xs font-semibold uppercase tracking-wide text-paper/70">Visual</p>
-              <pre class="mt-3 overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-paper">{{ session.tutorial.visual }}</pre>
-            </div>
+            <STutorialVisual :visual="session.tutorial.visual" />
           </div>
         </div>
         <div v-else class="rounded-md border border-dashed border-hairline bg-surface px-4 py-10 text-center text-sm text-ink-500">
@@ -150,11 +155,18 @@ async function submitTeachBack() {
             </p>
             <p class="mt-1 whitespace-pre-line">{{ m.content }}</p>
           </div>
+          <SAIWorkingState
+            v-if="session.loading === 'doubt'"
+            class="mr-auto max-w-[88%]"
+            title="Thinking through your doubt"
+            message="Codex is checking the concept context and preparing a guiding nudge."
+            detail="It will avoid giving away more than needed, so the reply may take a moment."
+          />
         </div>
         <form v-if="session.isStudent" class="flex flex-col gap-3 md:flex-row" @submit.prevent="sendDoubt">
           <input v-model="doubtText" class="s-input" placeholder="Ask a doubt about this concept" :disabled="!!session.loading" />
           <SButton type="submit" variant="primary" :disabled="!!session.loading || !doubtText.trim()">
-            {{ session.loading === "doubt" ? "Sending..." : "Send" }}
+            {{ session.loading === "doubt" ? "Thinking..." : "Send" }}
           </SButton>
         </form>
         <p v-else class="text-sm text-ink-500">Sign in as a student to use doubt chat.</p>
@@ -177,11 +189,17 @@ async function submitTeachBack() {
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-ink-500">{{ session.isStudent ? "Answer as yourself" : "Students only" }}</p>
             <SButton type="submit" variant="primary" :disabled="!!session.loading || !quizAnswer.trim() || !session.isStudent">
-              {{ session.loading === "quiz" ? "Grading..." : "Grade answer" }}
+              {{ session.loading === "quiz" ? "Checking answer..." : "Grade answer" }}
             </SButton>
           </div>
         </form>
-        <div v-if="session.quizGrade" class="rounded-lg border border-hairline bg-surface p-5">
+        <SAIWorkingState
+          v-if="session.loading === 'quiz'"
+          title="Checking your answer"
+          message="Codex is comparing your response with the rubric and the fixed misconception taxonomy."
+          detail="The result will include correctness, confidence, and the next follow-up question."
+        />
+        <div v-else-if="session.quizGrade" class="rounded-lg border border-hairline bg-surface p-5">
           <div class="flex flex-wrap items-center gap-2">
             <SBadge :tone="session.quizGrade.is_correct ? 'success' : 'warning'">
               {{ session.quizGrade.is_correct ? "Correct" : "Needs review" }}
@@ -205,11 +223,17 @@ async function submitTeachBack() {
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-ink-500">{{ session.isStudent ? "Explain as yourself" : "Students only" }}</p>
             <SButton type="submit" variant="primary" :disabled="!!session.loading || !teachBackText.trim() || !session.isStudent">
-              {{ session.loading === "teach-back" ? "Grading..." : "Grade teach-back" }}
+              {{ session.loading === "teach-back" ? "Reviewing..." : "Grade teach-back" }}
             </SButton>
           </div>
         </form>
-        <div v-if="session.teachBackGrade" class="rounded-lg border border-hairline bg-surface p-5">
+        <SAIWorkingState
+          v-if="session.loading === 'teach-back'"
+          title="Reviewing your teach-back"
+          message="Codex is checking clarity, accuracy, and the main gap in your explanation."
+          detail="This is slower than a normal save because the model reads your explanation before scoring it."
+        />
+        <div v-else-if="session.teachBackGrade" class="rounded-lg border border-hairline bg-surface p-5">
           <div class="flex flex-wrap items-center gap-2">
             <SBadge>Clarity {{ Math.round(session.teachBackGrade.clarity_score * 100) }}%</SBadge>
             <SBadge>Accuracy {{ Math.round(session.teachBackGrade.accuracy_score * 100) }}%</SBadge>
