@@ -11,6 +11,7 @@ import { useSessionStore } from "../../../stores/session";
 const session = useSessionStore();
 const timetable = ref({ classroom_id: null as number | null, weekday: 0, starts_at: "09:00", ends_at: "10:00", room: "" });
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const canManageTimetable = computed(() => session.isOrgAdmin && session.user?.segment === "school");
 const classroomOptions = computed(() => session.classrooms.map((room) => ({ label: room.name, value: room.id, hint: room.subject.name })));
 const dayOptions = computed(() => days.map((day, index) => ({ label: day, value: index })));
 const timetableByDay = computed(() => days.map((day, index) => ({
@@ -25,9 +26,13 @@ const busiestDay = computed(() => {
 });
 
 onMounted(async () => {
-  await session.loadClassrooms();
-  timetable.value.classroom_id = session.classrooms[0]?.id || null;
-  await session.loadOperations();
+  if (canManageTimetable.value) {
+    await session.loadClassrooms();
+    timetable.value.classroom_id = session.classrooms[0]?.id || null;
+    await session.loadOperations();
+  } else {
+    await session.loadTimetable();
+  }
 });
 
 async function addTimetable() {
@@ -39,7 +44,11 @@ async function addTimetable() {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="School office" title="Timetable" subtitle="Plan the teaching week by day, time, classroom, and room." />
+    <SPageHeader
+      :eyebrow="canManageTimetable ? 'School office' : 'Your week'"
+      title="Timetable"
+      :subtitle="canManageTimetable ? 'Plan the teaching week by day, time, classroom, and room.' : 'Your lessons from the classrooms you are enrolled in.'"
+    />
 
     <div class="grid gap-4 sm:grid-cols-3">
       <article class="rounded-lg border border-hairline bg-surface p-4">
@@ -56,7 +65,7 @@ async function addTimetable() {
       </article>
     </div>
 
-    <form class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 lg:grid-cols-[minmax(0,1.5fr)_140px_120px_120px_minmax(0,1fr)_auto]" @submit.prevent="addTimetable">
+    <form v-if="canManageTimetable" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 lg:grid-cols-[minmax(0,1.5fr)_140px_120px_120px_minmax(0,1fr)_auto]" @submit.prevent="addTimetable">
       <SCombobox v-model="timetable.classroom_id" label="Classroom" placeholder="Choose classroom" :options="classroomOptions" />
       <SCombobox v-model="timetable.weekday" label="Day" placeholder="Day" :options="dayOptions" />
       <label class="text-sm">Starts<input v-model="timetable.starts_at" class="s-input mt-1" type="time" required /></label>
@@ -65,7 +74,7 @@ async function addTimetable() {
       <SButton class="self-end" type="submit" variant="primary" :disabled="!timetable.classroom_id || session.loading === 'operations'">Add lesson</SButton>
     </form>
 
-    <SLoadingState v-if="session.loading === 'operations' && !session.timetable.length" :rows="3" />
+    <SLoadingState v-if="['operations', 'timetable'].includes(session.loading) && !session.timetable.length" :rows="3" />
     <section v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
       <div v-for="day in timetableByDay" :key="day.day" class="min-h-48 rounded-lg border border-hairline bg-surface">
         <div class="flex items-center justify-between border-b border-hairline px-4 py-3">
@@ -77,7 +86,7 @@ async function addTimetable() {
             <p class="text-xs font-semibold text-primary-700">{{ entry.starts_at }} - {{ entry.ends_at }}</p>
             <h3 class="mt-1 text-sm font-semibold text-ink-900">{{ entry.classroom }}</h3>
             <p class="mt-1 text-xs text-ink-500">{{ entry.room || "Room not set" }}</p>
-            <div class="mt-3 flex justify-end">
+            <div v-if="canManageTimetable" class="mt-3 flex justify-end">
               <SButton variant="ghost" :disabled="session.loading === 'operations'" @click="session.deleteTimetable(entry.id)">Remove</SButton>
             </div>
           </article>

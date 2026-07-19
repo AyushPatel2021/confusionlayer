@@ -3442,6 +3442,16 @@ def save_attendance(classroom_id: int, payload: AttendanceRequest, current_user:
 
 @app.get("/api/timetable")
 def list_timetable(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    if current_user.role == "student" and current_user.student_id:
+        rows = db.scalars(
+            select(TimetableEntry)
+            .join(Classroom, Classroom.id == TimetableEntry.classroom_id)
+            .join(ClassroomStudent, ClassroomStudent.classroom_id == Classroom.id)
+            .where(ClassroomStudent.student_id == current_user.student_id)
+            .where(TimetableEntry.org_id == current_user.org_id)
+            .order_by(TimetableEntry.weekday, TimetableEntry.starts_at)
+        ).all()
+        return [{"id": row.id, "classroom_id": row.classroom_id, "classroom": db.get(Classroom, row.classroom_id).name, "weekday": row.weekday, "starts_at": row.starts_at, "ends_at": row.ends_at, "room": row.room} for row in rows]
     org = _require_school_operations(current_user, db)
     rows = db.scalars(select(TimetableEntry).where(TimetableEntry.org_id == org.id).order_by(TimetableEntry.weekday, TimetableEntry.starts_at)).all()
     return [{"id": row.id, "classroom_id": row.classroom_id, "classroom": db.get(Classroom, row.classroom_id).name, "weekday": row.weekday, "starts_at": row.starts_at, "ends_at": row.ends_at, "room": row.room} for row in rows]

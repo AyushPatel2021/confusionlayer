@@ -38,6 +38,7 @@ const links = computed(() => {
         ...(session.isIndividualLearner ? [{ to: "/app/curriculum", label: "Curriculum", icon: FolderKanban }] : []),
         { to: "/app/explore", label: "Explore", icon: Compass },
         { to: "/app/progress", label: "My progress", icon: TrendingUp },
+        ...(session.isIndividualLearner ? [] : [{ to: "/app/timetable", label: "Timetable", icon: CalendarDays }]),
         { to: "/app/map", label: "Confusion map", icon: AlertTriangle },
         { to: "/app/exam-outcome", label: "Exam outlook", icon: ClipboardCheck },
         { to: "/app/exam-practice", label: "Exam practice", icon: ClipboardCheck },

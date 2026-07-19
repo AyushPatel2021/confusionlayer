@@ -47,7 +47,8 @@ class SchoolOperationsTest(TestCase):
         student = Student(name="Asha")
         subject = Subject(org_id=self.org.id, name="Science", board="CBSE", class_level="10")
         self.db.add_all([teacher, student, subject]); self.db.flush()
-        self.db.add(User(org_id=self.org.id, email="asha@gv.test", name="Asha", password_hash="x", role="student", student_id=student.id))
+        self.student_user = User(org_id=self.org.id, email="asha@gv.test", name="Asha", password_hash="x", role="student", student_id=student.id)
+        self.db.add(self.student_user)
         self.classroom = Classroom(org_id=self.org.id, teacher_id=teacher.id, subject_id=subject.id, name="10A Science")
         self.db.add(self.classroom); self.db.flush()
         self.db.add(ClassroomStudent(classroom_id=self.classroom.id, student_id=student.id)); self.db.commit()
@@ -74,6 +75,13 @@ class SchoolOperationsTest(TestCase):
         self.assertEqual(len(list_library(current_user=self.owner, db=self.db)), 1)
         self.assertEqual(len(list_transport_routes(current_user=self.owner, db=self.db)), 1)
         self.assertIn("Student", [item["kind"] for item in global_search("Asha", current_user=self.owner, db=self.db)["results"]])
+
+    def test_student_can_view_enrolled_classroom_timetable(self) -> None:
+        create_timetable_entry(TimetableEntryRequest(classroom_id=self.classroom.id, weekday=1, starts_at="10:00", ends_at="10:45", room="Lab 2"), current_user=self.owner, db=self.db)
+        timetable = list_timetable(current_user=self.student_user, db=self.db)
+        self.assertEqual(len(timetable), 1)
+        self.assertEqual(timetable[0]["classroom"], "10A Science")
+        self.assertEqual(timetable[0]["room"], "Lab 2")
 
     def test_owner_can_update_workspace_preferences(self) -> None:
         updated = update_org_settings(OrganizationSettingsRequest(name="Green Valley School", timezone="Asia/Kolkata", currency="INR"), current_user=self.owner, db=self.db)

@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
       { path: "learn/:conceptId", name: "concept", component: () => import("../views/app/student/ConceptView.vue"), meta: { title: "Concept", roles: ["student"] } },
       { path: "explore", name: "explore", component: () => import("../views/app/student/ExploreView.vue"), meta: { title: "Explore", roles: ["student"] } },
       { path: "progress", name: "progress", component: () => import("../views/app/student/ProgressView.vue"), meta: { title: "My progress", roles: ["student"] } },
+      { path: "timetable", name: "student-timetable", component: () => import("../views/app/teacher/OperationsView.vue"), meta: { title: "Timetable", roles: ["student"], studentSegments: ["school", "institute"] } },
       { path: "map", name: "confusion-map", component: () => import("../views/app/student/ConfusionMapView.vue"), meta: { title: "Confusion map", roles: ["student"] } },
       { path: "exam-outcome", name: "exam-outcome", component: () => import("../views/app/student/ExamOutcomeView.vue"), meta: { title: "Exam outlook", roles: ["student"] } },
       { path: "exam-practice", name: "exam-practice", component: () => import("../views/app/student/ExamPracticeView.vue"), meta: { title: "Exam practice", roles: ["student"] } },
