@@ -2160,6 +2160,51 @@ def dashboard(current_user: User = Depends(get_current_user), db: Session = Depe
     classrooms = db.scalars(select(Classroom).where(Classroom.org_id == org.id).order_by(Classroom.name)).all()
     students = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id, User.role == "student")) or 0)
     staff = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id, User.role.in_(("teacher", "school_admin", "accountant", "hr")))) or 0)
+    if org.segment == "institute":
+        risk_count = int(
+            db.scalar(
+                select(func.count(ForecastRecord.id)).where(
+                    ForecastRecord.student_id.in_(
+                        select(ClassroomStudent.student_id).join(Classroom, Classroom.id == ClassroomStudent.classroom_id).where(Classroom.org_id == org.id)
+                    ),
+                    ForecastRecord.predicted_difficulty >= 0.6,
+                )
+            )
+            or 0
+        )
+        return DashboardResponse(
+            role=current_user.role,
+            title="Institute overview",
+            metrics=[
+                DashboardMetricResponse(label="Students", value=str(students)),
+                DashboardMetricResponse(label="Teachers", value=str(staff)),
+                DashboardMetricResponse(label="Classrooms", value=str(len(classrooms))),
+                DashboardMetricResponse(label="Forecast risks", value=str(risk_count)),
+            ],
+            chart=DashboardChartResponse(label="Students by classroom", labels=[classroom.name for classroom in classrooms], values=[len(classroom.students) for classroom in classrooms]),
+            classrooms=[_managed_classroom_response(classroom) for classroom in classrooms],
+        )
+    if org.segment == "individual":
+        concepts = int(
+            db.scalar(
+                select(func.count(MasteryRecord.id)).where(
+                    MasteryRecord.student_id.in_(select(User.student_id).where(User.org_id == org.id, User.role == "student", User.student_id.is_not(None)))
+                )
+            )
+            or 0
+        )
+        return DashboardResponse(
+            role=current_user.role,
+            title="Individual overview",
+            metrics=[
+                DashboardMetricResponse(label="Learners", value=str(students)),
+                DashboardMetricResponse(label="Study plans", value=str(len(classrooms))),
+                DashboardMetricResponse(label="Tracked topics", value=str(concepts)),
+            ],
+            chart=DashboardChartResponse(label="Study plans", labels=[classroom.name for classroom in classrooms], values=[len(classroom.students) for classroom in classrooms]),
+            classrooms=[_managed_classroom_response(classroom) for classroom in classrooms],
+        )
+
     invoices = db.scalars(select(Invoice).where(Invoice.org_id == org.id, Invoice.voided.is_(False))).all()
     collected = sum(int(db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0) for invoice in invoices)
     outstanding = sum(max(0, invoice.amount_cents - int(db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0)) for invoice in invoices)

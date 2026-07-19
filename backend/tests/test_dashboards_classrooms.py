@@ -69,6 +69,15 @@ class DashboardClassroomTest(TestCase):
         self.assertEqual(response.title, "School overview")
         self.assertTrue(response.chart.labels)
 
+    def test_institute_owner_gets_teaching_dashboard(self) -> None:
+        institute_owner, _ = register_org(
+            self.db,
+            RegisterRequest(org_name="Bright Institute", segment="institute", email="owner@bright.test", password="password123", name="Lead"),
+        )
+        response = dashboard(current_user=institute_owner, db=self.db)
+        self.assertEqual(response.title, "Institute overview")
+        self.assertEqual([metric.label for metric in response.metrics], ["Students", "Teachers", "Classrooms", "Forecast risks"])
+
     def test_teacher_cannot_manage_classrooms(self) -> None:
         with self.assertRaises(HTTPException) as exc:
             list_classrooms(current_user=self.teacher, db=self.db)
