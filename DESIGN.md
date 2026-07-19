@@ -1,19 +1,13 @@
-# DESIGN.md — Slate Design System
+# DESIGN.md - Slate Design System
 
-> **Status: v1 — global system decided (agent's call, per human delegation on 2026-07-15).**
+> **Status: current visual source of truth.**
 >
-> The human delegated the look-and-feel decision to the agent, so the palette, type
-> scale, and spacing below are **decided** — this is the source of truth for AGENTS.md §8.
-> They're chosen to feel calm and trustworthy for a teacher/education product,
+> The palette, type scale, layout rhythm and interaction rules below are the public design
+> reference for Slate. They are chosen to feel calm and trustworthy for a teacher/education product,
 > deliberately *not* the generic purple-SaaS / default-shadcn look. Anyone can still
 > revise; if you change a token here, it changes everywhere by design.
 >
-> **Per-screen sections (bottom) are still stubs** — headers only. Per §8, a screen isn't
-> built until its section here is filled in, so those remain to be specced per screen.
->
-> **One dependency flag:** the webfonts named in §2 are a new dependency. Per AGENTS.md §1,
-> *installing/wiring* them (`@fontsource`/CDN) is confirmed at build time before adding the
-> package — the system-font fallbacks below hold until then, so no font is loaded prematurely.
+> Pair this file with `PROJECT_OVERVIEW.md` for product structure, roles and architecture.
 
 ---
 
@@ -82,7 +76,7 @@ clay accent. Semantic colors are muted, not fire-alarm bright.
 A single calm ramp so "mastered → confused" reads instantly and doesn't clash with the
 brand. 5-step: `#E2EFE8` (mastered) → `#CDE3D6` → `#F6ECD6` → `#EBCBA6` →
 `#E0A98A` (high predicted confusion). **Note:** these are *display* colors only — the
-mastery/forecast *numbers* remain the deterministic formulas per AGENTS.md §7. The color
+mastery/forecast *numbers* remain deterministic backend formulas. The color
 mapping never influences the computed score; it only visualizes it.
 
 ---
@@ -98,10 +92,8 @@ feel) paired with a clean humanist sans for UI/body, and a mono for code/quiz to
 | UI / body | **Public Sans** | `system-ui, sans-serif` |
 | Mono / code / tokens | **JetBrains Mono** | `ui-monospace, monospace` |
 
-> **Dependency note:** these three are webfonts. Loading them (`@fontsource` package or a
-> CDN link) is a new dependency, so that install is confirmed at build time per AGENTS.md §1.
-> Until then the system-font fallbacks above render everything — the design does not break
-> without the webfonts, it just looks less distinctive.
+> **Dependency note:** these three are loaded as webfonts in the frontend. The system-font
+> fallbacks above keep the app usable if fonts fail to load.
 
 ### Type scale (1.20 minor-third, base 16px)
 | Token | Size / line-height | Weight | Use |
@@ -148,7 +140,7 @@ Favor generous whitespace over borders/shadows to separate content.
 
 ## 4. Component states (generic — apply to EVERY screen)
 
-Per AGENTS.md §8, every screen ships **real** empty / loading / error states — never a
+Every screen ships **real** empty / loading / error states - never a
 bare spinner or a "TODO" placeholder. Defaults below; override per screen as noted.
 
 ### Empty state
@@ -175,9 +167,15 @@ bare spinner or a "TODO" placeholder. Defaults below; override per screen as not
 - Inline field errors sit beneath the field in `body-sm --danger`; never rely on color alone
   (include an icon/text) for accessibility.
 
-### Other shared components (stub — fill in as built)
-- Buttons (primary / secondary / ghost / danger), inputs, badges/pills (mastery, priority),
-  cards, nav/sidebar, modal/dialog, toast, tooltip, chart primitives, mastery-node styling.
+### Other shared components
+- Buttons: primary, secondary, ghost and danger variants with stable disabled/loading states.
+- Inputs and comboboxes: consistent border, focus and field-label treatment.
+- Badges: neutral, primary, success, warning, danger and info tones.
+- Cards/panels: flat bordered surfaces by default; raised only for overlays/popovers.
+- Navigation: fixed left app sidebar, sticky topbar, breadcrumbs and profile menu.
+- Dialogs: modal and confirm flows for destructive actions.
+- AI working state: clear waiting copy for Codex-backed actions.
+- Charts: Chart.js where time-series is needed; lightweight CSS bars for simple summaries.
 
 ---
 
@@ -191,36 +189,44 @@ bare spinner or a "TODO" placeholder. Defaults below; override per screen as not
 
 ---
 
-# Per-screen specs (STUBS — human to fill in)
+# Per-screen Specs
 
-> Headers only. Each screen must eventually document: layout/structure, key components,
-> and its specific empty / loading / error states. Screen list + priorities mirror
-> `PROJECT_SPEC.md` §10. **Do not build a screen whose section below is still empty —
-> stop and ask (AGENTS.md §8).**
+These notes document the design intent for the main product screens. The implemented app now
+uses these rules through shared UI components, app shell, cards, badges, loading states and
+role-specific layouts.
 
 ## Screen 1 — Signup / Login + "View Demo Data" fast-path  · Must
-_TODO: layout, primary action hierarchy, demo fast-path treatment, empty/loading/error._
+Two-column desktop layout: sign-in card on the left, demo workspace choices on the right.
+Demo cards use the same surface/border language as the app and route directly into school,
+institute, individual or platform admin workspaces.
 
 ## Screen 2 — Student: Syllabus Tree (locked / unlocked / mastered)  · Must
-_TODO: tree layout, node states + mastery color mapping, locked-gate treatment, states._
+Chapter list with compact concept rows. School/institute learners see locked states based on
+classroom unlocks. Individual learners see self-study chapters as available.
 
 ## Screen 3 — Teacher: Classroom chapter unlock control  · Must
-_TODO: roster/chapter matrix, unlock toggle affordance, confirm patterns, states._
+Teacher classroom view uses chapter bands with locked/ready badges and explicit unlock actions.
+Unlocking is classroom-scoped.
 
 ## Screen 4 — Concept Detail (Tutorial / Doubt Chat / Quiz / Teach-Back)  · Must
-_TODO: tabbed vs sectioned layout, mode switching, shared concept header, states._
+Concept detail keeps learning modes in a focused reading layout. AI actions show honest working
+states and preserve the current content geometry.
 
 ## Screen 5 — Tutorial view  · Must
-_TODO: reading layout (720px), prose type, generation loading affordance, states._
+Tutorial content uses readable line length, display hierarchy and structured sections for
+explanation, analogy, worked example and visual.
 
 ## Screen 6 — Doubt Chat (progressive scaffolding)  · Must
-_TODO: chat layout, scaffolding-level cues, thinking state, message error/retry._
+Chat uses calm message blocks and progressive response labels. Loading copy makes model work
+visible without exposing implementation details.
 
 ## Screen 7 — Quiz screen w/ structured feedback  · Must
-_TODO: question layout, structured feedback block, misconception tagging display, states._
+Quiz feedback separates correctness, misconception code, confidence and follow-up question.
+Misconception labels are shown as structured diagnostic data, not generic "wrong" messages.
 
 ## Screen 8 — Teach-Back screen (explain-back, GPT grades)  · Must — secondary differentiator
-_TODO: input affordance (text/voice?), grading wait state, feedback presentation, states._
+Teach-back is a text explanation workflow with explicit grading state and separate clarity,
+accuracy, gap and encouragement outputs.
 
 ## Screen 9 — Teacher: Confusion Brief (reactive, aggregated)  · Must
 Built Night 7. Reached via the **Teacher Insights** header tab (teacher/admin only).
@@ -251,10 +257,16 @@ Built Night 8. Student-only **My Progress** header tab.
 - **States:** loading → tall skeleton; empty → "no mastery data yet"; error → shared banner.
 
 ## Screen 13 — Exam Mode  · Nice-to-have
-_TODO: focused/distraction-reduced layout, timing affordance, states._
+Exam practice uses focused concept cards sorted by priority. Starting a question opens the same
+concept learning/quiz surface, keeping attempts separate from normal practice through the backend
+mode flag.
 
 ## Screen 14 — Teacher: Recommended Practice assign  · Nice-to-have
-_TODO: recommendation list, assign flow, states._
+Recommended practice is represented through student insights, forecast contributors and exam
+priority lists. The UI emphasizes what to review next rather than adding a separate assignment
+module before the demo.
 
 ## Screen 15 — Teacher: Syllabus Importer (PDF upload → extraction → review)  · Nice-to-have — stretch (§5.1)
-_TODO: upload state, extraction progress/loading, review/edit table, states._
+Importer uses a large drag-and-drop upload zone, official-source link-out, in-memory PDF parsing,
+Codex cleanup, editable review rows and a save step that persists only subject/chapter/topic
+structure.

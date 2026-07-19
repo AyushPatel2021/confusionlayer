@@ -1,165 +1,198 @@
 # Slate
 
-**Run your school. Clear the confusion.**
+**Run your school. Clear the confusion before it starts.**
 
-Slate is a multi-tenant school platform that unifies everyday school operations with an AI
-learning engine. Schools, tuition institutes, and individual learners each get a tailored
-experience over one system — from admissions and fees to teaching, and to **ConfusionLayer**,
-the AI engine that predicts and clears student confusion *before* it derails a lesson.
+Slate is a multi-tenant school operating system with ConfusionLayer, an AI learning engine that helps teachers and learners catch gaps before they become exam problems. It supports three product shapes on one codebase:
 
-**Live:** https://confusionlayer.znova.in
+- **Schools:** full workspace with owner, school admin, accountant, HR, teachers, students, parents, admissions, fees, payroll, timetable, attendance, curriculum and learning.
+- **Institutes:** teaching and learning workspace with owners, teachers, students, classrooms, curriculum and learner insights.
+- **Individual learners:** self-study workspace where a learner can create/import curriculum, unlock all self-study chapters, learn, practice and track progress.
 
-> **Status — active development.** The multi-tenant learning core, role hierarchy, curriculum
-> authoring/import, admissions, fees, HR/payroll, parent view, and platform-admin overview are
-> live. Remaining roadmap work is depth and polish, tracked in `PRODUCT_PLAN.md`.
+Live demo: https://confusionlayer.znova.in
 
-## Who it's for
+## Demo Access
 
-Slate is one engine, packaged for three segments:
+Use the **Explore a demo workspace** section on the sign-in page:
 
-- **Schools** — the full stack: an org hierarchy (Owner → School Admin → Accountant / HR /
-  Teachers → Students, plus Parents), admissions, fees & accounting, HR & payroll, and the
-  learning platform.
-- **Tuition institutes** — the teaching + learning core (teachers and students), with optional
-  fee tracking.
-- **Individual learners** — self-serve access to the ConfusionLayer learning experience.
+- **School Owner** shows the full school ERP and learning stack.
+- **Institute Owner** shows institute member/classroom/curriculum management.
+- **Individual Student** shows self-study curriculum, learn, progress, confusion map and exam practice.
+- **Platform Admin** shows app-owner usage, content, user and audit visibility.
 
-All plans are currently free.
+No demo password is needed for those buttons.
 
-## ConfusionLayer — the AI learning engine
+## What Makes It Different
 
-The differentiator. Instead of only reacting after a student struggles, ConfusionLayer
-**forecasts** which upcoming concepts a learner is likely to find hard — from decayed mastery
-of prerequisite concepts — and briefs the teacher before the lesson.
+Most AI tutor demos generate explanations after a learner asks for help. Slate adds a persistent model around the learner:
 
-- **Teacher-gated AI:** tutorials, Socratic doubt chat (progressive scaffolding), quizzes with
-  fixed-taxonomy misconception diagnosis, and teach-back grading.
-- **Confusion Forecast Engine:** deterministic graph propagation over the prerequisite map
-  (not GPT) that predicts per-concept difficulty. The AI *names* the misconception; the system
-  *computes* the mastery and forecast numbers.
-- **Teacher briefs:** a predictive Forecast Brief (pre-lesson) and a reactive Confusion Brief
-  (aggregated, privacy-thresholded — never individual student names).
-- **For students:** mastery-over-time progress and self-start tutorials for any topic.
-- **Persistent learner model:** student and teacher prerequisite maps show mastery, decay, and
-  forecast risk as connected curriculum concepts; an exam outlook turns the highest risks into
-  targeted review.
+- **Curriculum graph:** subjects, chapters, topics and prerequisite edges.
+- **Mastery decay:** deterministic effective mastery from quiz, open answer, misconception recurrence and retention signals.
+- **Forecast engine:** pure-code prediction of concepts likely to be difficult next, based on prerequisite gaps.
+- **Teacher-gated learning:** school/institute students only access what a teacher unlocks for their classroom.
+- **Individual self-study:** individual learners manage their own curriculum and all self-study chapters are available to them.
+- **Structured AI contracts:** Codex CLI calls GPT-5.6 Luna for tutorials, Socratic doubt chat, quiz diagnosis, teach-back grading and curriculum cleanup.
 
-## Operational modules
+The AI explains and diagnoses; the system calculates mastery and forecast numbers deterministically.
 
-- **Admissions:** applications progress from intake to enrolment.
-- **Fees:** fee structures, itemised invoices, payments, printable receipts, student ledgers,
-  dues, and CSV export.
-- **HR:** employee records, lifecycle status, payroll runs, payslips, and exports.
-- **Platform administration:** organization, usage, content-library, user, and audit visibility.
+## Features
 
-## Roles & access
+- Real email/password auth with JWT cookie sessions.
+- Role and segment routing for platform admin, school owner, school admin, accountant, HR, teacher, student and parent.
+- School/institute member invitation flow with optional SMTP delivery.
+- Owner-only Connect action for demoing member accounts.
+- Classroom CRUD, teacher assignment, student enrollment and subject assignment.
+- Dynamic curriculum authoring: subject, chapter and topic manager.
+- PDF curriculum import: parses in memory, allows Codex cleanup, then saves reviewed structure.
+- Learning flow: syllabus, concept detail, tutorial, doubt chat, quiz grading and teach-back grading.
+- Student progress, confusion map, exam outlook and exam practice.
+- Teacher classroom view, student insights, forecast brief and confusion brief.
+- School operations: admissions, fees, ledgers, receipts, HR, payroll, attendance and timetable.
+- Parent portal with learner summary, attendance, fees and learning signals.
+- Platform admin dashboard for app-wide usage, content, users and audit logs.
 
-Per organization: **Owner, School Admin, Accountant, HR/Staff Manager, Teacher, Student,
-Parent** — plus a cross-org **Platform Admin**. Access is role-gated in the UI and authorized
-on the backend, with strict per-organization data isolation.
+## Tech Stack
 
-## Curriculum
+- **Frontend:** Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind, Chart.js, Lucide icons.
+- **Backend:** FastAPI, SQLAlchemy, Alembic, pypdf.
+- **Database:** PostgreSQL.
+- **AI runtime:** Codex CLI with `gpt-5.6-luna`; no OpenAI Platform API key path.
+- **Deployment:** Docker Compose on an Oracle VM, public HTTPS handled by nginx reverse proxy.
 
-Curriculum is dynamic and org-authorable: start from a shared library, author
-Subjects → Chapters → Topics manually, or **import a document (PDF)** that is auto-structured
-into a reviewable subject/chapter/topic tree. Only Owner / School Admin / Teacher roles manage
-curriculum.
+## Repository Layout
 
-## Tech stack
+```text
+backend/
+  app/
+    main.py              FastAPI routes and response models
+    models.py            SQLAlchemy tables
+    auth.py              auth, invitations, demo users
+    ai.py                Codex CLI structured-output adapter
+    seed.py              rich demo data
+    eval/                grader/tutor evaluation harness
+  alembic/               database migrations
+  tests/                 backend regression tests
 
-- **Frontend:** Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind, Chart.js
-- **Backend:** FastAPI, SQLAlchemy, Alembic
-- **Database:** PostgreSQL
-- **AI:** GPT-5.6 via the Codex CLI (`codex exec`, structured output)
-- **Deployment:** Docker Compose on an Oracle Cloud VM behind nginx + Let's Encrypt
+frontend/
+  src/
+    layouts/             public/app/admin shells
+    views/               marketing, auth, app, admin screens
+    components/          UI, app shell, charts, marketing pieces
+    stores/session.ts    Pinia store and API client
+    router/index.ts      route guards and page titles
+  public/                Slate SVG logo
 
-## Repository layout
+scripts/
+  redeploy.sh            VM redeploy helper
 
+DESIGN.md                visual system and UI rules
+PROJECT_OVERVIEW.md      full product and engineering overview
 ```
-backend/    FastAPI app, SQLAlchemy models, Alembic migrations, eval harness, tests
-frontend/   Vue 3 single-page app
-scripts/    redeploy.sh
-docker-compose.yml + docker-compose.nginx.yml
-```
 
-## Local development
+## Local Setup
 
-Prerequisites: Docker + Docker Compose. For live AI, run `codex login` on the host first (the
-backend mounts `~/.codex`).
+Prerequisites:
+
+- Docker and Docker Compose
+- Codex CLI logged in on the host for live AI calls: `codex login`
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
-curl http://localhost/api/health      # smoke test
-# open http://localhost
-```
-
-Apply migrations and load demo data (inside the backend container):
-
-```bash
 docker compose exec backend alembic upgrade head
 docker compose exec backend python -m app.seed
 ```
 
-To intentionally rebuild a demo database from scratch, use the guarded reset mode:
+Open:
+
+```text
+http://localhost
+```
+
+Health check:
+
+```bash
+curl http://localhost/api/health
+```
+
+Reset local demo data intentionally:
 
 ```bash
 docker compose exec -e CONFUSIONLAYER_ALLOW_DB_RESET=1 backend python -m app.seed --reset-demo
 ```
 
-Run backend tests:
+## Environment Variables
+
+Copy `.env.example` to `.env`.
+
+| Variable | Purpose |
+|---|---|
+| `SITE_DOMAIN` | Frontend/Caddy site domain for local compose usage |
+| `POSTGRES_DB` | PostgreSQL database name |
+| `POSTGRES_USER` | PostgreSQL user |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `DATABASE_URL` | SQLAlchemy database URL used by backend and Alembic |
+| `CODEX_MODEL` | Codex model string, currently `gpt-5.6-luna` |
+| `CODEX_TIMEOUT_SECONDS` | Max seconds per Codex subprocess call |
+| `AI_DAILY_CALL_LIMIT` | Per-user daily AI call cap |
+| `JWT_SECRET` | Long random secret for cookie JWT signing |
+| `JWT_EXPIRES_HOURS` | Session lifetime |
+| `AUTH_COOKIE_SECURE` | `1` for HTTPS, `0` for local HTTP |
+| `SMTP_HOST` | Optional SMTP host for invitation/reset emails |
+| `SMTP_PORT` | SMTP port, usually `587` |
+| `SMTP_STARTTLS` | `1` to use STARTTLS |
+| `SMTP_USERNAME` | Optional SMTP username |
+| `SMTP_PASSWORD` | Optional SMTP password |
+| `SMTP_FROM` | Sender address for outgoing emails |
+| `CONFUSIONLAYER_ALLOW_DB_RESET` | Set to `1` only when intentionally resetting demo data |
+
+Without SMTP settings, emails are logged to backend container logs. This keeps local/demo setup simple while still allowing real invitation email delivery in production.
+
+## Testing
+
+Backend:
 
 ```bash
-cd backend && python -m pytest
-cd ../frontend && npm run build
+PYTHONPATH=backend python -m pytest backend/tests
 ```
 
-## Configuration
+Frontend:
 
-All configuration lives in `.env` (never committed). See `.env.example`:
-
-```
-SITE_DOMAIN, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, DATABASE_URL,
-CODEX_MODEL, CODEX_TIMEOUT_SECONDS, AI_DAILY_CALL_LIMIT,
-JWT_SECRET, JWT_EXPIRES_HOURS, AUTH_COOKIE_SECURE
+```bash
+cd frontend
+npm run build
 ```
 
-Use `AUTH_COOKIE_SECURE=1` on HTTPS deployments.
+Current verified state before this cleanup:
+
+- Backend tests: `148 passed`
+- Frontend production build: passing
+- Live smoke: school, institute, individual and platform admin demo paths return `200`
 
 ## Deployment
 
-Production runs via Docker Compose behind the VM's nginx (which owns public TLS), with the app
-bound to loopback. Redeploy with:
+Production runs on the Oracle VM from the git checkout:
 
 ```bash
 ./scripts/redeploy.sh
 ```
 
-## Roadmap
+Actual public architecture:
 
-Full plan in `PRODUCT_PLAN.md`. High level:
+```text
+Internet
+  -> nginx on VM, HTTPS for confusionlayer.znova.in
+  -> frontend container bound on 127.0.0.1:18080
+  -> backend container on Docker network
+  -> postgres container on Docker network only
+```
 
-1. Design system (in code) + routing shell
-2. Multi-tenant data model + real auth / onboarding
-3. Segment marketing sites
-4. Learning core in the new app shell
-5. Curriculum authoring + PDF import
-6. Org admin, members & billing (free)
-7. ERP: Admissions → Fees / Accounting → HR / Payroll
-8. Parent portal, platform admin, polish
+Production secrets live in the VM `.env` file and are not committed.
 
-## Evaluation
+## Documentation
 
-The ConfusionLayer grader/tutor has a fixed evaluation set in `backend/app/eval/`
-(correct / partial / misconception grading + doubt-chat redirect and turn-1 leak checks) with
-pure, mock-tested scoring and a live runner (`python -m app.eval.run_eval`).
+- Read `PROJECT_OVERVIEW.md` for the full product, role, architecture, data and demo explanation.
+- Read `DESIGN.md` for the visual system.
 
-## Curriculum sources & disclaimer
+## Disclaimer
 
-Slate aligns to official public curriculum *structure* (e.g., CBSE / NCERT) without copying
-textbook content — structure, titles, and links only; all learner-facing content is original
-or AI-generated within a defined scope.
-
-> Slate is an independent educational product and is not affiliated with or endorsed by CBSE or
-> NCERT. Curriculum references are used for educational alignment. Official
-> textbooks remain available through NCERT and ePathshala.
+Slate is an independent educational product and is not affiliated with or endorsed by CBSE or NCERT. Curriculum references are used only for educational alignment. Official textbooks remain available through NCERT and ePathshala.

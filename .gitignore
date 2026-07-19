@@ -6,6 +6,7 @@ node_modules/
 dist/
 __pycache__/
 .pytest_cache/
+.codebase-memory/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -15,14 +16,18 @@ venv/
 *.pyo
 *.log
 
+# Local scratch assets. The app logo lives at frontend/public/slate_logo.svg.
+/slate_logo.svg
+
 # AI agent / internal instruction docs — kept local, never pushed.
 # These drive the AI assistants (rules, hackathon spec, infra) and are not
 # product docs to ship. Add any new AI-instruction doc to this list.
-# NOTE: PRODUCT_PLAN.md and DESIGN.md are intentionally tracked (public product docs).
+# NOTE: DESIGN.md and PROJECT_OVERVIEW.md are intentionally tracked public docs.
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
 PROJECT_SPEC.md
+PRODUCT_PLAN.md
 STATUS.md
 .claude/
 INFRASTRUCTURE.md
