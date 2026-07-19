@@ -2,14 +2,14 @@
 
 This document records the current deployed infrastructure for Slate on the Oracle Cloud VM. It intentionally references secret locations only; it does not include API keys, passwords, JWT secrets, Codex credentials, or tokens.
 
-Last checked: 2026-07-18.
+Last checked: 2026-07-19.
 
 ## Live URL
 
 - Production URL: `https://confusionlayer.znova.in`
 - Backend health endpoint: `https://confusionlayer.znova.in/api/health`
 - Current deployed repo path on VM: `/home/ubuntu/confusionlayer`
-- Current deployed commit when checked: `d019ac7`
+- Current deployed runtime commit when checked: `1ba3ece`
 
 ## What Is Running
 
