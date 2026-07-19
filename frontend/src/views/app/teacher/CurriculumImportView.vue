@@ -23,7 +23,9 @@ const dragging = ref(false);
 const classroomOptions = computed(() => session.classrooms.map((classroom) => ({ label: classroom.name, value: classroom.id, hint: classroom.subject.name })));
 
 onMounted(async () => {
-  await Promise.all([session.loadClassrooms(), session.loadClassroomOptions()]);
+  if (!session.isIndividualLearner) {
+    await Promise.all([session.loadClassrooms(), session.loadClassroomOptions()]);
+  }
 });
 
 async function onFile(event: Event) {
@@ -62,7 +64,12 @@ async function commit() {
   });
   if (tree) {
     savedTree.value = tree;
-    assignClassroomId.value = session.classrooms[0]?.id || null;
+    if (session.isIndividualLearner) {
+      await session.loadSyllabus();
+      assignClassroomId.value = null;
+    } else {
+      assignClassroomId.value = session.classrooms[0]?.id || null;
+    }
   }
 }
 
@@ -173,15 +180,20 @@ async function refine() {
         <div>
           <p class="s-eyebrow">Saved subject</p>
           <h2 class="mt-1 font-display text-xl font-semibold text-ink-900">{{ savedTree.name }}</h2>
-          <p class="mt-1 text-sm text-ink-500">Assign this imported subject to an existing classroom or batch now, or manage it later from Classrooms.</p>
+          <p class="mt-1 text-sm text-ink-500">{{ session.isIndividualLearner ? "This subject is now active in your self-study plan." : "Assign this imported subject to an existing classroom or batch now, or manage it later from Classrooms." }}</p>
         </div>
-        <RouterLink to="/app/classrooms" class="text-sm font-semibold text-primary-700 underline-offset-4 hover:underline">Manage classroom assignments</RouterLink>
+        <RouterLink
+          :to="session.isIndividualLearner ? '/app/learn' : '/app/classrooms'"
+          class="text-sm font-semibold text-primary-700 underline-offset-4 hover:underline"
+        >
+          {{ session.isIndividualLearner ? "Open Learn" : "Manage classroom assignments" }}
+        </RouterLink>
       </div>
-      <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div v-if="!session.isIndividualLearner" class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
         <SCombobox v-model="assignClassroomId" label="Classroom or batch" placeholder="Choose where this subject is taught" :options="classroomOptions" />
         <SButton class="self-end" variant="primary" :disabled="!assignClassroomId || session.loading === `classroom-${assignClassroomId}`" @click="assignSavedSubject">Assign subject</SButton>
       </div>
-      <p v-if="!session.classrooms.length" class="mt-3 text-sm text-ink-500">Create a classroom first, then assign this subject.</p>
+      <p v-if="!session.isIndividualLearner && !session.classrooms.length" class="mt-3 text-sm text-ink-500">Create a classroom first, then assign this subject.</p>
     </section>
   </div>
 </template>

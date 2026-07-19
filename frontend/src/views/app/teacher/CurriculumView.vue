@@ -30,10 +30,19 @@ const visibleSubjects = computed(() => {
   if (!classrooms.value.length) return session.curriculumSubjects;
   return session.curriculumSubjects.filter((subject) => scopedSubjectIds.value.has(subject.id));
 });
-const canCreateSubject = computed(() => session.isOrgAdmin);
+const canCreateSubject = computed(() => session.isOrgAdmin || session.isIndividualLearner);
+const pageSubtitle = computed(() =>
+  session.isIndividualLearner
+    ? "Build your own self-study subjects, chapters, and topics."
+    : "Author your own curriculum, or import one from a document.",
+);
 
 onMounted(async () => {
-  await Promise.all([session.loadDashboard(), session.loadCurriculumSubjects()]);
+  if (session.isIndividualLearner) {
+    await session.loadCurriculumSubjects();
+  } else {
+    await Promise.all([session.loadDashboard(), session.loadCurriculumSubjects()]);
+  }
   classroomFilter.value = classrooms.value[0]?.id || null;
   const firstSubject = visibleSubjects.value[0];
   if (firstSubject) await select(firstSubject.id);
@@ -96,7 +105,7 @@ async function applyClassroomFilter() {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="Curriculum" title="Subjects, chapters & topics" subtitle="Author your own curriculum, or import one from a document.">
+    <SPageHeader eyebrow="Curriculum" title="Subjects, chapters & topics" :subtitle="pageSubtitle">
       <template #actions>
         <RouterLink to="/app/curriculum/import"><SButton variant="secondary">Import from PDF</SButton></RouterLink>
       </template>
@@ -133,7 +142,7 @@ async function applyClassroomFilter() {
               <SBadge v-if="s.shared" tone="neutral">shared</SBadge>
             </button>
           </li>
-          <li v-if="!visibleSubjects.length" class="rounded-md border border-hairline bg-surface px-4 py-5 text-sm text-ink-500">No subject is connected to this classroom yet.</li>
+          <li v-if="!visibleSubjects.length" class="rounded-md border border-hairline bg-surface px-4 py-5 text-sm text-ink-500">{{ session.isIndividualLearner ? "No self-study subject yet. Add one or import a PDF to start." : "No subject is connected to this classroom yet." }}</li>
         </ul>
       </aside>
 
@@ -148,7 +157,7 @@ async function applyClassroomFilter() {
                 <template v-if="tree.assigned_classrooms.length">
                   Used by {{ tree.assigned_classrooms.map((item) => item.name).join(", ") }}
                 </template>
-                <template v-else>No classroom is using this subject yet.</template>
+                <template v-else>{{ session.isIndividualLearner ? "Active in your self-study workspace." : "No classroom is using this subject yet." }}</template>
               </p>
             </div>
             <div class="flex items-center gap-2"><SBadge v-if="!editable" tone="neutral">read-only</SBadge><template v-if="editable"><SButton variant="ghost" @click="rename(`/api/curriculum/subjects/${tree.id}`, tree.name, tree.id, 'name')">Edit</SButton><SButton variant="ghost" @click="remove(`/api/curriculum/subjects/${tree.id}`, undefined, tree.name)">Delete</SButton></template></div>
@@ -159,12 +168,18 @@ async function applyClassroomFilter() {
               <div v-if="tree.assigned_teachers.length" class="mt-3 flex flex-wrap gap-2">
                 <SBadge v-for="teacher in tree.assigned_teachers" :key="teacher.id" tone="primary">{{ teacher.name }}</SBadge>
               </div>
-              <p v-else class="mt-3 text-sm text-ink-500">Assign a teacher by creating or editing a classroom for this subject.</p>
+              <p v-else class="mt-3 text-sm text-ink-500">{{ session.isIndividualLearner ? "Self-study subjects are managed directly by you." : "Assign a teacher by creating or editing a classroom for this subject." }}</p>
             </section>
             <section class="rounded-lg border border-hairline bg-surface p-4">
               <p class="s-eyebrow">Hierarchy</p>
-              <p class="mt-2 text-sm text-ink-600">School -> Classroom -> Subject -> Teacher. Subject assignment is managed from Classrooms so one subject can be taught in multiple classes.</p>
-              <RouterLink to="/app/classrooms" class="mt-3 inline-block text-sm font-semibold text-primary-700 hover:underline">Manage classroom assignments</RouterLink>
+              <template v-if="session.isIndividualLearner">
+                <p class="mt-2 text-sm text-ink-600">Individual learner -> Self-study subject -> Chapter -> Topic. The selected subject appears in Learn.</p>
+                <RouterLink to="/app/learn" class="mt-3 inline-block text-sm font-semibold text-primary-700 hover:underline">Open Learn</RouterLink>
+              </template>
+              <template v-else>
+                <p class="mt-2 text-sm text-ink-600">School -> Classroom -> Subject -> Teacher. Subject assignment is managed from Classrooms so one subject can be taught in multiple classes.</p>
+                <RouterLink to="/app/classrooms" class="mt-3 inline-block text-sm font-semibold text-primary-700 hover:underline">Manage classroom assignments</RouterLink>
+              </template>
             </section>
           </div>
 

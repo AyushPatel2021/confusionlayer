@@ -1636,19 +1636,40 @@ CURRICULUM_EDITOR_ROLES = {"owner", "school_admin", "teacher", "admin"}
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
 
 
-def _require_curriculum_editor(user: User) -> None:
-    if user.role not in CURRICULUM_EDITOR_ROLES:
+def _is_individual_learner(db: Session, user: User) -> bool:
+    org = db.get(Organization, user.org_id) if user.org_id else None
+    return user.role == "student" and org is not None and org.segment == "individual"
+
+
+def _require_curriculum_editor(user: User, db: Session) -> None:
+    if user.role not in CURRICULUM_EDITOR_ROLES and not _is_individual_learner(db, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to manage curriculum")
 
 
 def _editable_subject(db: Session, user: User, subject_id: int) -> Subject:
-    _require_curriculum_editor(user)
+    _require_curriculum_editor(user, db)
     subject = db.get(Subject, subject_id)
     if not subject:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
     if subject.org_id != user.org_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This curriculum is read-only for your organization")
     return subject
+
+
+def _activate_individual_subject(db: Session, user: User, subject: Subject) -> Classroom | None:
+    if not _is_individual_learner(db, user):
+        return None
+    classroom = _get_user_classroom(db, user)
+    classroom.subject_id = subject.id
+    return classroom
+
+
+def _unlock_individual_chapters(db: Session, classroom: Classroom | None, chapters: list[Chapter]) -> None:
+    if not classroom:
+        return
+    for chapter in chapters:
+        if not db.scalar(select(ChapterUnlock.id).where(ChapterUnlock.classroom_id == classroom.id, ChapterUnlock.chapter_id == chapter.id)):
+            db.add(ChapterUnlock(classroom_id=classroom.id, chapter_id=chapter.id, unlocked_by=classroom.teacher_id))
 
 
 def _subject_assignments(db: Session, subject: Subject, org_id: int | None) -> tuple[list[ClassroomMemberResponse], list[ClassroomMemberResponse]]:
@@ -1704,7 +1725,7 @@ def _subject_tree_response(db: Session, subject: Subject, org_id: int | None) ->
 
 @app.get("/api/curriculum/subjects", response_model=list[CurriculumSubjectResponse])
 def list_curriculum_subjects(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[CurriculumSubjectResponse]:
-    _require_curriculum_editor(current_user)
+    _require_curriculum_editor(current_user, db)
     subjects = db.scalars(
         select(Subject).where(or_(Subject.org_id == current_user.org_id, Subject.org_id.is_(None))).order_by(Subject.id)
     ).all()
@@ -1716,9 +1737,11 @@ def list_curriculum_subjects(current_user: User = Depends(get_current_user), db:
 
 @app.post("/api/curriculum/subjects", response_model=CurriculumSubjectResponse, status_code=status.HTTP_201_CREATED)
 def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumSubjectResponse:
-    _require_curriculum_editor(current_user)
+    _require_curriculum_editor(current_user, db)
     subject = Subject(org_id=current_user.org_id, name=payload.name.strip(), board=payload.board.strip(), class_level=payload.class_level.strip())
     db.add(subject)
+    db.flush()
+    _activate_individual_subject(db, current_user, subject)
     _audit(db, current_user, "curriculum.subject_created", subject.name)
     db.commit()
     db.refresh(subject)
@@ -1745,7 +1768,7 @@ def delete_curriculum_subject(subject_id: int, current_user: User = Depends(get_
 
 @app.get("/api/curriculum/subjects/{subject_id}", response_model=CurriculumTreeResponse)
 def get_curriculum_subject(subject_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
-    _require_curriculum_editor(current_user)
+    _require_curriculum_editor(current_user, db)
     subject = db.get(Subject, subject_id)
     if not subject or subject.org_id not in (None, current_user.org_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
@@ -1758,6 +1781,8 @@ def add_curriculum_chapter(subject_id: int, payload: ChapterCreateRequest, curre
     next_order = 1 + max((chapter.order for chapter in subject.chapters), default=0)
     chapter = Chapter(subject_id=subject.id, title=payload.title.strip(), order=next_order)
     db.add(chapter)
+    db.flush()
+    _unlock_individual_chapters(db, _get_user_classroom(db, current_user) if _is_individual_learner(db, current_user) else None, [chapter])
     _audit(db, current_user, "curriculum.chapter_created", chapter.title, {"subject": subject.name})
     db.commit()
     db.refresh(chapter)
@@ -1814,8 +1839,12 @@ def delete_curriculum_concept(concept_id: int, current_user: User = Depends(get_
 
 
 @app.post("/api/curriculum/import", response_model=ImportDraftResponse)
-def import_curriculum_pdf(file: UploadFile = File(...), current_user: User = Depends(get_current_user)) -> ImportDraftResponse:
-    _require_curriculum_editor(current_user)
+def import_curriculum_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ImportDraftResponse:
+    _require_curriculum_editor(current_user, db)
     contents = file.file.read()
     if not contents:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
@@ -1831,7 +1860,7 @@ def import_curriculum_pdf(file: UploadFile = File(...), current_user: User = Dep
 
 @app.post("/api/curriculum/import/refine", response_model=ImportDraftResponse)
 def refine_curriculum_import(payload: ImportRefineRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ImportDraftResponse:
-    _require_curriculum_editor(current_user)
+    _require_curriculum_editor(current_user, db)
     if not payload.chapters:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Import a draft before refining it")
     check_and_increment_ai_usage(db, current_user)
@@ -1848,11 +1877,17 @@ def refine_curriculum_import(payload: ImportRefineRequest, current_user: User = 
 
 @app.post("/api/curriculum/import/commit", response_model=CurriculumTreeResponse, status_code=status.HTTP_201_CREATED)
 def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
-    _require_curriculum_editor(current_user)
+    _require_curriculum_editor(current_user, db)
     if not payload.chapters:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one chapter is required")
     drafts = [DraftChapter(title=chapter.title, topics=list(chapter.topics)) for chapter in payload.chapters]
     subject = commit_subject_tree(db, current_user.org_id, payload.name, payload.board, payload.class_level, drafts)
+    classroom = _activate_individual_subject(db, current_user, subject)
+    _unlock_individual_chapters(db, classroom, list(subject.chapters))
+    if classroom:
+        _audit(db, current_user, "curriculum.individual_subject_activated", subject.name, {"classroom_id": classroom.id})
+        db.commit()
+        db.refresh(subject)
     return _subject_tree_response(db, subject, current_user.org_id)
 
 

@@ -45,8 +45,8 @@ const routes: RouteRecordRaw[] = [
       { path: "attendance", name: "attendance", component: () => import("../views/app/teacher/AttendanceView.vue"), meta: { title: "Attendance", roles: ["teacher", "owner", "school_admin"], segments: ["school"] } },
       { path: "operations", name: "operations", component: () => import("../views/app/teacher/OperationsView.vue"), meta: { title: "Timetable", roles: ["owner", "school_admin"], segments: ["school"] } },
       { path: "classrooms", name: "classrooms", component: () => import("../views/app/teacher/ClassroomsView.vue"), meta: { title: "Classrooms", roles: ["owner", "school_admin"] } },
-      { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum", roles: ["teacher", "owner", "school_admin"] } },
-      { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum", roles: ["teacher", "owner", "school_admin"] } },
+      { path: "curriculum", name: "curriculum", component: () => import("../views/app/teacher/CurriculumView.vue"), meta: { title: "Curriculum", roles: ["teacher", "owner", "school_admin", "student"], studentSegments: ["individual"] } },
+      { path: "curriculum/import", name: "curriculum-import", component: () => import("../views/app/teacher/CurriculumImportView.vue"), meta: { title: "Import curriculum", roles: ["teacher", "owner", "school_admin", "student"], studentSegments: ["individual"] } },
       { path: "admissions", name: "admissions", component: () => import("../views/app/teacher/AdmissionsView.vue"), meta: { title: "Admissions", roles: ["owner", "school_admin"], segments: ["school"] } },
       { path: "fees", name: "fees", component: () => import("../views/app/teacher/FeesView.vue"), meta: { title: "Fees", roles: ["owner", "school_admin", "accountant"], segments: ["school"] } },
       { path: "hr", name: "hr", component: () => import("../views/app/teacher/HrView.vue"), meta: { title: "HR and payroll", roles: ["owner", "school_admin", "hr"], segments: ["school"] } },
@@ -87,8 +87,10 @@ router.beforeEach(async (to) => {
   }
   const roles = to.meta.roles as string[] | undefined;
   const segments = to.meta.segments as string[] | undefined;
+  const studentSegments = to.meta.studentSegments as string[] | undefined;
   if (roles && (!session.user || !roles.includes(session.user.role))) return session.roleHome;
   if (segments && (!session.user || !session.user.segment || !segments.includes(session.user.segment))) return session.roleHome;
+  if (studentSegments && session.user?.role === "student" && (!session.user.segment || !studentSegments.includes(session.user.segment))) return session.roleHome;
   return true;
 });
 

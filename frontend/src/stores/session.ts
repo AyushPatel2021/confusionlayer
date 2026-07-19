@@ -505,6 +505,7 @@ export const useSessionStore = defineStore("session", {
     isTeacher: (state) =>
       ["teacher", "owner", "school_admin"].includes(state.user?.role ?? ""),
     isStudent: (state) => state.user?.role === "student",
+    isIndividualLearner: (state) => state.user?.role === "student" && state.user?.segment === "individual",
     isAdmin: (state) => state.user?.role === "platform_admin",
     isOrgAdmin: (state) => ["owner", "school_admin"].includes(state.user?.role ?? ""),
     isOwner: (state) => state.user?.role === "owner",

@@ -35,6 +35,7 @@ const links = computed(() => {
       { label: "Learning", items: [
         { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
         { to: "/app/learn", label: "Learn", icon: BookOpen },
+        ...(session.isIndividualLearner ? [{ to: "/app/curriculum", label: "Curriculum", icon: FolderKanban }] : []),
         { to: "/app/explore", label: "Explore", icon: Compass },
         { to: "/app/progress", label: "My progress", icon: TrendingUp },
         { to: "/app/map", label: "Confusion map", icon: AlertTriangle },
