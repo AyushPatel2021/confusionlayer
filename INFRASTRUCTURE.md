@@ -9,7 +9,7 @@ Last checked: 2026-07-18.
 - Production URL: `https://confusionlayer.znova.in`
 - Backend health endpoint: `https://confusionlayer.znova.in/api/health`
 - Current deployed repo path on VM: `/home/ubuntu/confusionlayer`
-- Current deployed commit when checked: `e7cddfe`
+- Current deployed commit when checked: `d019ac7`
 
 ## What Is Running
 
