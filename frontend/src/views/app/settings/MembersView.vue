@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
@@ -11,11 +12,14 @@ import SStatCard from "../../../components/ui/SStatCard.vue";
 import { displayRoleLabel, roleLabels, useSessionStore, type Role } from "../../../stores/session";
 
 const session = useSessionStore();
+const router = useRouter();
 const email = ref("");
 const role = ref("teacher");
-const roles = ["teacher", "student", "school_admin", "accountant", "hr", "parent"];
+const schoolRoles = ["teacher", "student", "school_admin", "accountant", "hr", "parent"];
+const instituteRoles = ["teacher", "student"];
 const inviteDepartment = ref("Teaching & learning");
 const departmentOptions = ["Teaching & learning", "Admissions", "Accounts", "HR", "Front-office", "Family", "Learning", "Workspace"];
+const instituteDepartmentOptions = ["Teaching & learning", "Learning", "Workspace"];
 const departmentsForRole: Record<string, string> = { teacher: "Teaching & learning", student: "Learning", school_admin: "Front-office", accountant: "Accounts", hr: "HR", parent: "Family" };
 const guardianEmail = ref("");
 const guardianStudentId = ref<number | null>(null);
@@ -29,13 +33,14 @@ const visibleMembers = computed(() => session.members.filter((member) => {
 }));
 const departments = computed(() => [...new Set(session.members.map((member) => member.department))]);
 const activeMembers = computed(() => session.members.filter((member) => member.status === "active"));
-const roleMix = computed(() => roles.map((item) => ({
+const availableRoles = computed(() => session.user?.segment === "institute" ? instituteRoles : schoolRoles);
+const roleMix = computed(() => availableRoles.value.map((item) => ({
   role: item,
   count: session.members.filter((member) => member.role === item).length,
 })).filter((item) => item.count));
-const roleOptions = computed(() => roles.map((item) => ({ label: roleLabel(item), value: item })));
+const roleOptions = computed(() => availableRoles.value.map((item) => ({ label: roleLabel(item), value: item })));
 const departmentSelectOptions = computed(() => [{ label: "All departments", value: "all" }, ...departments.value.map((item) => ({ label: item, value: item }))]);
-const departmentOptionsForCombobox = computed(() => departmentOptions.map((item) => ({ label: item, value: item })));
+const departmentOptionsForCombobox = computed(() => (session.user?.segment === "institute" ? instituteDepartmentOptions : departmentOptions).map((item) => ({ label: item, value: item })));
 const studentSelectOptions = computed(() => session.studentOptions.map((student) => ({ label: student.name, value: student.id })));
 const departmentGroups = computed(() => {
   const source = visibleMembers.value;
@@ -50,6 +55,10 @@ const memberDisplayRole = (role: string) => displayRoleLabel({ role: role as Rol
 
 onMounted(async () => {
   await session.loadMembers();
+  if (!availableRoles.value.includes(role.value)) {
+    role.value = availableRoles.value[0];
+    roleChanged();
+  }
   if (session.user?.segment === "school") await session.loadStudentOptions();
 });
 
@@ -79,6 +88,9 @@ async function removeMember() {
   if (!memberToRemove.value) return;
   await session.removeMember(memberToRemove.value.id);
   memberToRemove.value = null;
+}
+async function connectMember(userId: number) {
+  if (await session.connectMember(userId)) await router.push(session.roleHome);
 }
 </script>
 
@@ -173,10 +185,11 @@ async function removeMember() {
                     <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
                   </div>
                 </div>
-                <div v-if="m.role !== 'owner'" class="mt-4 grid gap-2 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_auto_auto]">
+                <div v-if="m.role !== 'owner'" class="mt-4 grid gap-2 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_auto_auto_auto]">
                   <SCombobox v-if="!['teacher', 'student'].includes(m.role)" :model-value="m.role" placeholder="Role" :options="roleOptions" @update:model-value="setRoleValue(m.id, $event)" />
                   <div v-else class="rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-500">Role managed by profile</div>
                   <SCombobox :model-value="m.department" placeholder="Department" :options="departmentOptionsForCombobox" @update:model-value="setDepartmentValue(m.id, $event)" />
+                  <SButton variant="secondary" :disabled="m.status !== 'active' || session.loading === `member-connect-${m.id}`" @click="connectMember(m.id)">{{ session.loading === `member-connect-${m.id}` ? "Connecting..." : "Connect" }}</SButton>
                   <SButton variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
                   <SButton variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="memberToRemove = m">Remove</SButton>
                 </div>

@@ -92,7 +92,7 @@ const links = computed(() => {
       { to: "/app/operations", label: "Timetable", icon: CalendarDays },
     ] });
   }
-  if (session.user?.role === "owner" && session.user.segment === "school") {
+  if (session.user?.role === "owner" && ["school", "institute"].includes(session.user.segment || "")) {
     groups.push({ label: "Workspace", items: [
       { to: "/app/settings/members", label: "Members", icon: Users },
       { to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard },

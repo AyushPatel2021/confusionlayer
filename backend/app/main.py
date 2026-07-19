@@ -978,7 +978,8 @@ def create_org_invitation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    organization = _require_school_owner(current_user, db)
+    organization = _require_member_owner(current_user, db)
+    _require_invitable_role(organization, payload.role)
     if payload.department not in DEPARTMENTS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a valid department")
 
@@ -1857,6 +1858,11 @@ def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = 
 
 ORG_ADMIN_ROLES = {"owner", "school_admin", "admin"}
 OWNER_ROLES = {"owner", "admin"}
+MEMBER_MANAGEMENT_SEGMENTS = {"school", "institute"}
+SEGMENT_INVITABLE_ROLES = {
+    "school": {"school_admin", "accountant", "hr", "teacher", "student", "parent"},
+    "institute": {"teacher", "student"},
+}
 
 
 def _require_org_admin(user: User) -> None:
@@ -1871,6 +1877,21 @@ def _require_school_owner(user: User, db: Session) -> Organization:
     if org.segment != "school":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Member management is available in school workspaces")
     return org
+
+
+def _require_member_owner(user: User, db: Session) -> Organization:
+    if user.role != "owner" or not user.org_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the workspace owner can manage members")
+    org = _current_org(db, user)
+    if org.segment not in MEMBER_MANAGEMENT_SEGMENTS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Member management is available in school and institute workspaces")
+    return org
+
+
+def _require_invitable_role(org: Organization, role: str) -> None:
+    allowed_roles = SEGMENT_INVITABLE_ROLES.get(org.segment, set())
+    if role not in allowed_roles:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a role available for this workspace")
 
 
 def _member_department(role: str) -> str:
@@ -2256,7 +2277,7 @@ def get_org(current_user: User = Depends(get_current_user), db: Session = Depend
 
 @app.get("/api/org/members", response_model=MembersResponse)
 def list_org_members(q: str = "", offset: int = 0, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MembersResponse:
-    _require_school_owner(current_user, db)
+    _require_member_owner(current_user, db)
     statement = select(User).where(User.org_id == current_user.org_id)
     if q.strip():
         pattern = f"%{q.strip()}%"
@@ -2271,9 +2292,23 @@ def list_org_members(q: str = "", offset: int = 0, limit: int = 100, current_use
     )
 
 
+@app.post("/api/org/members/{user_id}/connect", response_model=AuthResponse)
+def connect_member_session(user_id: int, response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AuthResponse:
+    org = _require_member_owner(current_user, db)
+    member = db.get(User, user_id)
+    if not member or member.org_id != org.id or member.role in {"owner", "platform_admin"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.status != "active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only active members can be connected")
+    _audit(db, current_user, "member.connected", member.email, {"member_id": member.id, "role": member.role})
+    db.commit()
+    return _auth_response(db, member, response)
+
+
 @app.post("/api/org/members/{user_id}/role", response_model=MemberResponse)
 def change_member_role(user_id: int, payload: ChangeRoleRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
-    _require_school_owner(current_user, db)
+    org = _require_member_owner(current_user, db)
+    _require_invitable_role(org, payload.role)
     member = db.get(User, user_id)
     if not member or member.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -2290,7 +2325,7 @@ def change_member_role(user_id: int, payload: ChangeRoleRequest, current_user: U
 
 @app.patch("/api/org/members/{user_id}/status", response_model=MemberResponse)
 def change_member_status(user_id: int, payload: ChangeMemberStatusRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
-    _require_school_owner(current_user, db)
+    _require_member_owner(current_user, db)
     member = db.get(User, user_id)
     if not member or member.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -2304,7 +2339,7 @@ def change_member_status(user_id: int, payload: ChangeMemberStatusRequest, curre
 
 @app.patch("/api/org/members/{user_id}/department", response_model=MemberResponse)
 def change_member_department(user_id: int, payload: ChangeMemberDepartmentRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
-    _require_school_owner(current_user, db)
+    _require_member_owner(current_user, db)
     if payload.department not in DEPARTMENTS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a valid department")
     member = db.get(User, user_id)
@@ -2320,7 +2355,7 @@ def change_member_department(user_id: int, payload: ChangeMemberDepartmentReques
 
 @app.delete("/api/org/members/{user_id}", response_model=MemberResponse)
 def remove_member(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MemberResponse:
-    _require_school_owner(current_user, db)
+    _require_member_owner(current_user, db)
     member = db.get(User, user_id)
     if not member or member.org_id != current_user.org_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -2334,7 +2369,7 @@ def remove_member(user_id: int, current_user: User = Depends(get_current_user), 
 
 @app.get("/api/org/members/export.csv")
 def export_members_csv(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    _require_school_owner(current_user, db)
+    _require_member_owner(current_user, db)
     members = db.scalars(select(User).where(User.org_id == current_user.org_id).order_by(User.id)).all()
     stream = io.StringIO(); writer = csv.writer(stream)
     writer.writerow(["Name", "Email", "Role", "Department", "Status"])

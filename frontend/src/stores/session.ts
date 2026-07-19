@@ -1271,6 +1271,27 @@ export const useSessionStore = defineStore("session", {
       catch (error) { this.error = messageFromError(error); }
       finally { this.loading = ""; }
     },
+    async connectMember(userId: number): Promise<boolean> {
+      this.loading = `member-connect-${userId}`;
+      this.error = "";
+      try {
+        const response = await api<AuthResponse>(`/api/org/members/${userId}/connect`, { method: "POST" });
+        this.applyAuth(response);
+        this.org = null;
+        this.members = [];
+        this.pendingInvites = [];
+        this.dashboard = null;
+        this.classrooms = [];
+        this.classroomOptions = null;
+        if (response.user.role !== "platform_admin" && response.user.segment !== "individual") await this.loadSyllabus();
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
     async loadPlans() {
       this.loading = "plans";
       this.error = "";

@@ -51,7 +51,7 @@ const routes: RouteRecordRaw[] = [
       { path: "fees", name: "fees", component: () => import("../views/app/teacher/FeesView.vue"), meta: { title: "Fees", roles: ["owner", "school_admin", "accountant"], segments: ["school"] } },
       { path: "hr", name: "hr", component: () => import("../views/app/teacher/HrView.vue"), meta: { title: "HR and payroll", roles: ["owner", "school_admin", "hr"], segments: ["school"] } },
       // Org settings
-      { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue"), meta: { title: "Members", roles: ["owner"], segments: ["school"] } },
+      { path: "settings/members", name: "settings-members", component: () => import("../views/app/settings/MembersView.vue"), meta: { title: "Members", roles: ["owner"], segments: ["school", "institute"] } },
       { path: "settings/billing", name: "settings-billing", component: () => import("../views/app/settings/BillingView.vue"), meta: { title: "Plan and billing", roles: ["owner"] } },
       { path: "settings/workspace", name: "settings-workspace", component: () => import("../views/app/settings/WorkspaceSettingsView.vue"), meta: { title: "Workspace settings", roles: ["owner"] } },
       { path: "teacher/forecast", name: "teacher-forecast", component: () => import("../views/app/teacher/ForecastBriefView.vue"), meta: { title: "Forecast brief", roles: ["teacher", "owner", "school_admin"] } },
