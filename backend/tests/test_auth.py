@@ -26,7 +26,8 @@ from app.auth import (
     user_response,
     verify_password,
 )
-from app.models import Base, Student, Teacher, User
+from app.main import AccountProfileRequest, ChangePasswordRequest, change_account_password, update_account_profile
+from app.models import Base, ClassroomStudent, Plan, Student, Teacher, User
 
 
 class AuthTest(TestCase):
@@ -111,6 +112,31 @@ class AuthTest(TestCase):
         self.assertEqual(demo_student.email, "demo.student@confusionlayer.local")
         self.assertEqual(demo_student.student_id, student.id)
 
+    def test_model_demo_users_have_distinct_segments(self) -> None:
+        self.db.add_all(
+            [
+                Plan(code="school_free", segment="school", name="School Free", price_cents=0, limits={}, features=[]),
+                Plan(code="institute_free", segment="institute", name="Institute Free", price_cents=0, limits={}, features=[]),
+                Plan(code="individual_free", segment="individual", name="Individual Free", price_cents=0, limits={}, features=[]),
+            ]
+        )
+        self.db.commit()
+
+        platform = get_or_create_demo_user(self.db, "platform_admin", "platform")
+        school = get_or_create_demo_user(self.db, "owner", "school")
+        institute = get_or_create_demo_user(self.db, "owner", "institute")
+        individual = get_or_create_demo_user(self.db, "student", "individual")
+
+        self.assertEqual(platform.role, "platform_admin")
+        self.assertIsNone(platform.org_id)
+        self.assertEqual(school.organization.segment, "school")
+        self.assertEqual(institute.organization.segment, "institute")
+        self.assertEqual(individual.organization.segment, "individual")
+        self.assertIsNotNone(individual.student_id)
+        self.assertIsNotNone(
+            self.db.query(ClassroomStudent).filter(ClassroomStudent.student_id == individual.student_id).first()
+        )
+
     def test_user_response_uses_linked_student_name_when_account_name_is_empty(self) -> None:
         student = Student(name="Demo Student")
         self.db.add(student)
@@ -127,6 +153,28 @@ class AuthTest(TestCase):
         self.db.refresh(user)
 
         self.assertEqual(user_response(user).name, "Demo Student")
+
+    def test_account_profile_update_and_password_change(self) -> None:
+        user = create_user(
+            self.db,
+            SignupRequest(email="profile@example.com", password="password123", role="admin", name="Original Name"),
+        )
+
+        response = update_account_profile(
+            AccountProfileRequest(name="New Name", phone="9999999999", contact_number="8888888888", avatar_url="https://example.com/avatar.png"),
+            current_user=user,
+            db=self.db,
+        )
+        self.assertEqual(response.user.name, "New Name")
+        self.assertEqual(response.user.profile["phone"], "9999999999")
+        self.assertEqual(response.user.profile["avatar_url"], "https://example.com/avatar.png")
+
+        with self.assertRaises(HTTPException):
+            change_account_password(ChangePasswordRequest(current_password="bad-password", new_password="newpassword123"), current_user=user, db=self.db)
+
+        result = change_account_password(ChangePasswordRequest(current_password="password123", new_password="newpassword123"), current_user=user, db=self.db)
+        self.assertTrue(result["ok"])
+        self.assertIsNotNone(authenticate_user(self.db, "profile@example.com", "newpassword123"))
 
     def test_normalize_email(self) -> None:
         self.assertEqual(normalize_email("  USER@Example.COM "), "user@example.com")

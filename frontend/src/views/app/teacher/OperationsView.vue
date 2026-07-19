@@ -1,16 +1,91 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+
+import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
+import SCombobox from "../../../components/ui/SCombobox.vue";
+import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
-import STabs from "../../../components/ui/STabs.vue";
 import { useSessionStore } from "../../../stores/session";
-const session = useSessionStore(); const tab = ref("timetable"); const tabs = [{ value: "timetable", label: "Timetable" }, { value: "library", label: "Library" }, { value: "transport", label: "Transport" }];
-const rooms = computed(() => session.classrooms);
-const timetable = ref({ classroom_id: 0, weekday: 0, starts_at: "09:00", ends_at: "10:00", room: "" }); const book = ref({ title: "", author: "", isbn: "", copies_total: 1 }); const route = ref({ name: "", vehicle_label: "", driver_name: "", stops: "" });
-onMounted(async () => { await session.loadClassrooms(); timetable.value.classroom_id = rooms.value[0]?.id || 0; await session.loadOperations(); });
-async function addTimetable() { if (timetable.value.classroom_id) await session.createTimetable(timetable.value); }
-async function addBook() { if (book.value.title.trim()) await session.createLibraryBook(book.value); }
-async function addRoute() { if (route.value.name.trim()) await session.createTransportRoute({ ...route.value, stops: route.value.stops.split(',').map((stop) => stop.trim()).filter(Boolean) }); }
+
+const session = useSessionStore();
+const timetable = ref({ classroom_id: null as number | null, weekday: 0, starts_at: "09:00", ends_at: "10:00", room: "" });
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const classroomOptions = computed(() => session.classrooms.map((room) => ({ label: room.name, value: room.id, hint: room.subject.name })));
+const dayOptions = computed(() => days.map((day, index) => ({ label: day, value: index })));
+const timetableByDay = computed(() => days.map((day, index) => ({
+  day,
+  entries: session.timetable.filter((entry) => entry.weekday === index).sort((a, b) => `${a.starts_at}${a.ends_at}`.localeCompare(`${b.starts_at}${b.ends_at}`)),
+})));
+const totalLessons = computed(() => session.timetable.length);
+const activeDays = computed(() => timetableByDay.value.filter((day) => day.entries.length).length);
+const busiestDay = computed(() => {
+  const sorted = [...timetableByDay.value].sort((a, b) => b.entries.length - a.entries.length);
+  return sorted[0]?.entries.length ? sorted[0].day : "None";
+});
+
+onMounted(async () => {
+  await session.loadClassrooms();
+  timetable.value.classroom_id = session.classrooms[0]?.id || null;
+  await session.loadOperations();
+});
+
+async function addTimetable() {
+  if (!timetable.value.classroom_id) return;
+  await session.createTimetable({ ...timetable.value, classroom_id: timetable.value.classroom_id, room: timetable.value.room.trim() || undefined });
+  timetable.value = { ...timetable.value, starts_at: "09:00", ends_at: "10:00", room: "" };
+}
 </script>
-<template><div class="space-y-8"><SPageHeader eyebrow="School office" title="School operations" subtitle="Run timetables, library inventory, and transport routes from one workspace."/><STabs v-model="tab" :tabs="tabs"/><template v-if="tab === 'timetable'"><form class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-5" @submit.prevent="addTimetable"><select v-model="timetable.classroom_id" class="s-input"><option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }}</option></select><select v-model="timetable.weekday" class="s-input"><option v-for="(day, index) in days" :key="day" :value="index">{{ day }}</option></select><input v-model="timetable.starts_at" class="s-input" type="time"/><input v-model="timetable.ends_at" class="s-input" type="time"/><SButton type="submit" variant="primary">Add lesson</SButton></form><div class="mt-4 divide-y divide-hairline rounded-lg border border-hairline bg-surface"><div v-for="entry in session.timetable" :key="entry.id" class="flex items-center justify-between p-4 text-sm"><span>{{ days[entry.weekday] }} | {{ entry.starts_at }}-{{ entry.ends_at }} | {{ entry.classroom }}</span><SButton variant="ghost" @click="session.deleteTimetable(entry.id)">Remove</SButton></div></div></template><template v-else-if="tab === 'library'"><form class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-4" @submit.prevent="addBook"><input v-model="book.title" class="s-input" placeholder="Book title"/><input v-model="book.author" class="s-input" placeholder="Author"/><input v-model.number="book.copies_total" class="s-input" min="1" type="number"/><SButton type="submit" variant="primary">Add book</SButton></form><div class="mt-4 divide-y divide-hairline rounded-lg border border-hairline bg-surface"><div v-for="item in session.libraryBooks" :key="item.id" class="flex items-center justify-between p-4 text-sm"><span><b>{{ item.title }}</b><span v-if="item.author"> | {{ item.author }}</span></span><span>{{ item.copies_available }}/{{ item.copies_total }} available</span></div></div></template><template v-else><form class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-4" @submit.prevent="addRoute"><input v-model="route.name" class="s-input" placeholder="Route name"/><input v-model="route.vehicle_label" class="s-input" placeholder="Vehicle"/><input v-model="route.stops" class="s-input" placeholder="Stops, comma-separated"/><SButton type="submit" variant="primary">Add route</SButton></form><div class="mt-4 divide-y divide-hairline rounded-lg border border-hairline bg-surface"><div v-for="item in session.transportRoutes" :key="item.id" class="flex items-center justify-between p-4 text-sm"><span><b>{{ item.name }}</b><span v-if="item.vehicle_label"> | {{ item.vehicle_label }}</span><span v-if="item.stops.length"> | {{ item.stops.join(', ') }}</span></span><span>{{ item.student_count }} students</span></div></div></template><p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p></div></template>
+
+<template>
+  <div class="space-y-8">
+    <SPageHeader eyebrow="School office" title="Timetable" subtitle="Plan the teaching week by day, time, classroom, and room." />
+
+    <div class="grid gap-4 sm:grid-cols-3">
+      <article class="rounded-lg border border-hairline bg-surface p-4">
+        <p class="text-xs font-medium text-ink-500">Lessons</p>
+        <p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ totalLessons }}</p>
+      </article>
+      <article class="rounded-lg border border-hairline bg-surface p-4">
+        <p class="text-xs font-medium text-ink-500">Active days</p>
+        <p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ activeDays }}</p>
+      </article>
+      <article class="rounded-lg border border-hairline bg-surface p-4">
+        <p class="text-xs font-medium text-ink-500">Busiest day</p>
+        <p class="mt-1 font-display text-2xl font-semibold text-ink-900">{{ busiestDay }}</p>
+      </article>
+    </div>
+
+    <form class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 lg:grid-cols-[minmax(0,1.5fr)_140px_120px_120px_minmax(0,1fr)_auto]" @submit.prevent="addTimetable">
+      <SCombobox v-model="timetable.classroom_id" label="Classroom" placeholder="Choose classroom" :options="classroomOptions" />
+      <SCombobox v-model="timetable.weekday" label="Day" placeholder="Day" :options="dayOptions" />
+      <label class="text-sm">Starts<input v-model="timetable.starts_at" class="s-input mt-1" type="time" required /></label>
+      <label class="text-sm">Ends<input v-model="timetable.ends_at" class="s-input mt-1" type="time" required /></label>
+      <label class="text-sm">Room<input v-model="timetable.room" class="s-input mt-1" placeholder="Lab 2" /></label>
+      <SButton class="self-end" type="submit" variant="primary" :disabled="!timetable.classroom_id || session.loading === 'operations'">Add lesson</SButton>
+    </form>
+
+    <SLoadingState v-if="session.loading === 'operations' && !session.timetable.length" :rows="3" />
+    <section v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+      <div v-for="day in timetableByDay" :key="day.day" class="min-h-48 rounded-lg border border-hairline bg-surface">
+        <div class="flex items-center justify-between border-b border-hairline px-4 py-3">
+          <h2 class="font-semibold text-ink-900">{{ day.day }}</h2>
+          <SBadge tone="neutral">{{ day.entries.length }}</SBadge>
+        </div>
+        <div class="space-y-3 p-3">
+          <article v-for="entry in day.entries" :key="entry.id" class="rounded-md border border-hairline bg-surface-sunken p-3">
+            <p class="text-xs font-semibold text-primary-700">{{ entry.starts_at }} - {{ entry.ends_at }}</p>
+            <h3 class="mt-1 text-sm font-semibold text-ink-900">{{ entry.classroom }}</h3>
+            <p class="mt-1 text-xs text-ink-500">{{ entry.room || "Room not set" }}</p>
+            <div class="mt-3 flex justify-end">
+              <SButton variant="ghost" :disabled="session.loading === 'operations'" @click="session.deleteTimetable(entry.id)">Remove</SButton>
+            </div>
+          </article>
+          <p v-if="!day.entries.length" class="rounded-md border border-dashed border-hairline px-3 py-6 text-center text-sm text-ink-500">No lessons</p>
+        </div>
+      </div>
+    </section>
+
+    <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
+  </div>
+</template>

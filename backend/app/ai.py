@@ -53,6 +53,11 @@ class BriefNarrativeContent:
     suggested_activity: str
 
 
+@dataclass(frozen=True)
+class CurriculumDraftContent:
+    chapters: list[dict[str, Any]]
+
+
 def ai_daily_call_limit() -> int:
     return int(os.getenv("AI_DAILY_CALL_LIMIT", "50"))
 
@@ -154,6 +159,26 @@ def generate_forecast_narrative(
     )
     response_text = _run_codex_json(prompt, "forecast_brief.schema.json")
     return parse_brief_narrative(response_text, "Forecast brief")
+
+
+def refine_curriculum_draft(board: str, class_level: str, subject_name: str, chapters: list[dict[str, Any]]) -> CurriculumDraftContent:
+    prompt = (
+        "Clean this extracted curriculum outline for a school teacher. Keep only syllabus-style chapter and topic names. "
+        "Do not invent new chapters. Merge obvious OCR duplicates, remove page numbers/noise, and keep the result concise.\n\n"
+        + json.dumps({"board": board, "class_level": class_level, "subject_name": subject_name, "chapters": chapters}, ensure_ascii=True)
+    )
+    response_text = _run_codex_json(prompt, "curriculum_draft.schema.json")
+    content = _json_content(response_text, "Curriculum draft")
+    chapters_value = content.get("chapters")
+    if not isinstance(chapters_value, list):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Curriculum draft response did not match the contract")
+    cleaned: list[dict[str, Any]] = []
+    for chapter in chapters_value[:30]:
+        if not isinstance(chapter, dict) or not isinstance(chapter.get("title"), str):
+            continue
+        topics = chapter.get("topics", [])
+        cleaned.append({"title": chapter["title"].strip()[:180], "topics": [str(topic).strip()[:180] for topic in topics if str(topic).strip()][:40] if isinstance(topics, list) else []})
+    return CurriculumDraftContent(chapters=cleaned)
 
 
 def doubt_response_type(turn_count: int) -> str:

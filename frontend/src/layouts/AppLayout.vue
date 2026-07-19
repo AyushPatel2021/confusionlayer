@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { Bell, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, X } from "@lucide/vue";
+import { Bell, ChevronDown, ChevronRight, CircleUserRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, X } from "@lucide/vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 
 import AppSidebar from "../components/app/AppSidebar.vue";
 import SButton from "../components/ui/SButton.vue";
-import { useSessionStore } from "../stores/session";
+import { displayRoleLabel, useSessionStore } from "../stores/session";
 
 const session = useSessionStore();
 const route = useRoute();
@@ -19,7 +19,7 @@ const notificationsOpen = ref(false);
 
 const initials = computed(() => (session.user?.name || "User").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase());
 const displayName = computed(() => session.user?.name || "User");
-const displayRole = computed(() => (session.user?.role || "member").replace(/_/g, " "));
+const displayRole = computed(() => displayRoleLabel(session.user));
 const pageTitle = computed(() => (typeof route.meta.title === "string" ? route.meta.title : "Workspace"));
 const workspaceName = computed(() => session.user?.org_name || (session.isStudent ? "Learning" : session.isParent ? "Family" : "Workspace"));
 const settingsPath = computed(() => "/app/settings/workspace");
@@ -160,6 +160,7 @@ async function signOut() {
                 <p class="truncate text-sm font-semibold text-ink-900">{{ displayName }}</p>
                 <p class="mt-1 text-xs capitalize text-ink-500">{{ displayRole }}</p>
               </div>
+              <RouterLink to="/app/account" class="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 hover:bg-primary-50 hover:text-primary-700" role="menuitem"><CircleUserRound :size="17" /> Account profile</RouterLink>
               <RouterLink v-if="canOpenSettings" :to="settingsPath" class="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 hover:bg-primary-50 hover:text-primary-700" role="menuitem"><Settings :size="17" /> Workspace settings</RouterLink>
               <SButton class="mt-1" variant="ghost" block @click="signOut"><LogOut :size="17" class="mr-2" />Sign out</SButton>
             </div>

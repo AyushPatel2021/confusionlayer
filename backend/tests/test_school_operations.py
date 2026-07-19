@@ -21,6 +21,7 @@ from app.main import (
     create_library_book,
     create_timetable_entry,
     create_transport_route,
+    delete_timetable_entry,
     global_search,
     list_attendance,
     list_library,
@@ -64,10 +65,12 @@ class SchoolOperationsTest(TestCase):
         self.assertEqual(report["attendance"]["present"], 1)
 
     def test_school_operations_and_search(self) -> None:
-        create_timetable_entry(TimetableEntryRequest(classroom_id=self.classroom.id, weekday=0, starts_at="09:00", ends_at="10:00"), current_user=self.owner, db=self.db)
+        timetable_entry = create_timetable_entry(TimetableEntryRequest(classroom_id=self.classroom.id, weekday=0, starts_at="09:00", ends_at="10:00"), current_user=self.owner, db=self.db)
         create_library_book(LibraryBookRequest(title="The Science Book", copies_total=2), current_user=self.owner, db=self.db)
         create_transport_route(TransportRouteRequest(name="North Route", stops=["Park"]), current_user=self.owner, db=self.db)
         self.assertEqual(len(list_timetable(current_user=self.owner, db=self.db)), 1)
+        delete_timetable_entry(timetable_entry["id"], current_user=self.owner, db=self.db)
+        self.assertEqual(len(list_timetable(current_user=self.owner, db=self.db)), 0)
         self.assertEqual(len(list_library(current_user=self.owner, db=self.db)), 1)
         self.assertEqual(len(list_transport_routes(current_user=self.owner, db=self.db)), 1)
         self.assertIn("Student", [item["kind"] for item in global_search("Asha", current_user=self.owner, db=self.db)["results"]])

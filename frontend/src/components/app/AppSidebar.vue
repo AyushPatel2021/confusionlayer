@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   BookOpen,
   BriefcaseBusiness,
-  Building2,
   CalendarClock,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -16,8 +15,10 @@ import {
   GraduationCap,
   ReceiptText,
   Settings,
-  Bus,
+  School,
+  CalendarDays,
   TrendingUp,
+  UserRoundCog,
   Users,
   UsersRound,
 } from "@lucide/vue";
@@ -32,7 +33,7 @@ const links = computed(() => {
   if (session.isStudent) {
     return [
       { label: "Learning", items: [
-        { to: "/app/dashboard", label: "Overview", icon: Building2 },
+        { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
         { to: "/app/learn", label: "Learn", icon: BookOpen },
         { to: "/app/explore", label: "Explore", icon: Compass },
         { to: "/app/progress", label: "My progress", icon: TrendingUp },
@@ -45,11 +46,26 @@ const links = computed(() => {
   if (session.isParent) {
     return [{ label: "Family", items: [{ to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined }, { to: "/app/family", label: "My family", icon: UsersRound }] }];
   }
-  if (["accountant", "hr"].includes(session.user?.role || "")) {
-    return [{ label: "Workspace", items: [{ to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined }] }];
+  if (session.user?.role === "accountant") {
+    return [
+      { label: "Accounts", items: [
+        { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
+        { to: "/app/fees", label: "Fees", icon: ReceiptText },
+      ] },
+      { label: "Workspace", items: [{ to: "/app/account", label: "Account", icon: UserRoundCog }] },
+    ];
+  }
+  if (session.user?.role === "hr") {
+    return [
+      { label: "HR", items: [
+        { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
+        { to: "/app/hr", label: "HR & payroll", icon: BriefcaseBusiness },
+      ] },
+      { label: "Workspace", items: [{ to: "/app/account", label: "Account", icon: UserRoundCog }] },
+    ];
   }
   const classroomItems = [
-    { to: "/app/dashboard", label: "Overview", icon: Building2 },
+    { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
     { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
     { to: "/app/teacher/students", label: "Student insights", icon: UsersRound },
     { to: "/app/attendance", label: "Attendance", icon: CalendarCheck },
@@ -59,12 +75,12 @@ const links = computed(() => {
   ];
   const groups = [{ label: "Teaching", items: classroomItems }];
   if (session.isOrgAdmin && session.user?.segment === "school") {
-    classroomItems.splice(1, 0, { to: "/app/classrooms", label: "Classrooms", icon: Building2 });
+    classroomItems.splice(1, 0, { to: "/app/classrooms", label: "Classrooms", icon: School });
     groups.push({ label: "School office", items: [
       { to: "/app/admissions", label: "Admissions", icon: ClipboardCheck },
       { to: "/app/fees", label: "Fees", icon: ReceiptText },
       { to: "/app/hr", label: "HR & payroll", icon: BriefcaseBusiness },
-      { to: "/app/operations", label: "School operations", icon: Bus },
+      { to: "/app/operations", label: "Timetable", icon: CalendarDays },
     ] });
   }
   if (session.user?.role === "owner" && session.user.segment === "school") {
@@ -72,9 +88,10 @@ const links = computed(() => {
       { to: "/app/settings/members", label: "Members", icon: Users },
       { to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard },
       { to: "/app/settings/workspace", label: "Workspace settings", icon: Settings },
+      { to: "/app/account", label: "Account", icon: UserRoundCog },
     ] });
   } else if (session.user?.role === "owner") {
-    groups.push({ label: "Workspace", items: [{ to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard }, { to: "/app/settings/workspace", label: "Workspace settings", icon: Settings }] });
+    groups.push({ label: "Workspace", items: [{ to: "/app/settings/billing", label: "Plan & billing", icon: CreditCard }, { to: "/app/settings/workspace", label: "Workspace settings", icon: Settings }, { to: "/app/account", label: "Account", icon: UserRoundCog }] });
   }
   return groups;
 });

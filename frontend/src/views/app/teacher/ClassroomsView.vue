@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import SButton from "../../../components/ui/SButton.vue";
 import SCombobox from "../../../components/ui/SCombobox.vue";
 import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SEmptyState from "../../../components/ui/SEmptyState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
+import SStatCard from "../../../components/ui/SStatCard.vue";
 import { useSessionStore } from "../../../stores/session";
 
 const session = useSessionStore();
@@ -22,17 +23,30 @@ const options = computed(() => session.classroomOptions);
 const subjectOptions = computed(() => (options.value?.subjects || []).map((subject) => ({ label: subject.name, value: subject.id })));
 const teacherOptions = computed(() => (options.value?.teachers || []).map((teacher) => ({ label: teacher.name, value: teacher.id })));
 const studentOptions = computed(() => (options.value?.students || []).map((student) => ({ label: student.name, value: student.id })));
+const isSchool = computed(() => session.user?.segment === "school");
+const pageCopy = computed(() =>
+  isSchool.value
+    ? { eyebrow: "School setup", title: "Classrooms", subtitle: "Build school classrooms by assigning a subject, class teacher and enrolled students." }
+    : { eyebrow: "Institute setup", title: "Batches", subtitle: "Create teaching batches with a subject, instructor and enrolled learners." },
+);
+const totalStudents = computed(() => session.classrooms.reduce((sum, classroom) => sum + classroom.students.length, 0));
+const unassignedStudents = computed(() => Math.max(0, (options.value?.students.length || 0) - new Set(session.classrooms.flatMap((classroom) => classroom.students.map((student) => student.id))).size));
 
 onMounted(async () => {
   await Promise.all([session.loadClassrooms(), session.loadClassroomOptions()]);
 });
 
+watch(options, (value) => {
+  if (!subjectId.value) subjectId.value = value?.subjects[0]?.id || null;
+  if (!teacherId.value) teacherId.value = value?.teachers[0]?.id || null;
+}, { immediate: true });
+
 async function create() {
   if (!name.value.trim() || !subjectId.value || !teacherId.value) return;
   if (await session.createClassroom({ name: name.value.trim(), subject_id: subjectId.value, teacher_id: teacherId.value })) {
     name.value = "";
-    subjectId.value = null;
-    teacherId.value = null;
+    subjectId.value = options.value?.subjects[0]?.id || null;
+    teacherId.value = options.value?.teachers[0]?.id || null;
   }
 }
 
@@ -55,19 +69,32 @@ async function remove(classroomId: number) {
 
 <template>
   <div class="space-y-8">
-    <SPageHeader eyebrow="School setup" title="Classrooms" subtitle="Assign a curriculum subject and class teacher, then enrol students." />
-    <form class="grid gap-4 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-4" @submit.prevent="create">
-      <label class="text-sm font-medium text-ink-700">Classroom name<input v-model="name" class="s-input mt-1" placeholder="Class 10 A" required /></label>
-      <SCombobox v-model="subjectId" label="Subject" placeholder="Select subject" :options="subjectOptions" />
-      <SCombobox v-model="teacherId" label="Class teacher" placeholder="Select teacher" :options="teacherOptions" />
-      <div class="flex items-end"><SButton block type="submit" :disabled="!name.trim() || !subjectId || !teacherId || session.loading === 'create-classroom'">Create classroom</SButton></div>
+    <SPageHeader :eyebrow="pageCopy.eyebrow" :title="pageCopy.title" :subtitle="pageCopy.subtitle" />
+    <div class="grid gap-4 sm:grid-cols-3">
+      <SStatCard :label="isSchool ? 'Classrooms' : 'Batches'" :value="session.classrooms.length" />
+      <SStatCard label="Enrolled learners" :value="totalStudents" />
+      <SStatCard label="Not enrolled" :value="unassignedStudents" tone="warning" />
+    </div>
+    <form class="rounded-lg border border-hairline bg-surface p-5" @submit.prevent="create">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p class="s-eyebrow">Create {{ isSchool ? "classroom" : "batch" }}</p>
+          <p class="mt-1 text-sm text-ink-500">Defaults are selected from this workspace. Change them only when needed.</p>
+        </div>
+        <SButton type="submit" :disabled="!name.trim() || !subjectId || !teacherId || session.loading === 'create-classroom'">Create</SButton>
+      </div>
+      <div class="mt-4 grid gap-4 md:grid-cols-3">
+        <label class="text-sm font-medium text-ink-700">{{ isSchool ? "Classroom name" : "Batch name" }}<input v-model="name" class="s-input mt-1" :placeholder="isSchool ? 'Class 10 A' : 'Foundation Batch A'" required /></label>
+        <SCombobox v-model="subjectId" label="Subject" placeholder="Select subject" :options="subjectOptions" />
+        <SCombobox v-model="teacherId" :label="isSchool ? 'Class teacher' : 'Instructor'" placeholder="Select teacher" :options="teacherOptions" />
+      </div>
     </form>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
     <SEmptyState v-if="!session.classrooms.length && session.loading !== 'classrooms'" title="No classrooms yet" message="Create a classroom to connect teachers, curriculum, and students." />
     <section v-for="classroom in session.classrooms" :key="classroom.id" class="rounded-lg border border-hairline bg-surface p-5">
       <div class="flex flex-wrap items-start justify-between gap-4">
-        <div><h2 class="font-display text-xl font-semibold text-ink-900">{{ classroom.name }}</h2><p class="mt-1 text-sm text-ink-500">{{ classroom.subject.name }} | {{ classroom.teacher.name }}</p></div>
-        <div class="flex items-center gap-3"><span class="text-sm font-medium text-ink-600">{{ classroom.students.length }} enrolled</span><button class="s-focus text-sm font-semibold text-primary-700 hover:underline" @click="startEdit(classroom)">Edit</button><button class="s-focus text-sm font-semibold text-danger hover:underline" @click="classroomToDelete = classroom">Delete</button></div>
+        <div><p class="s-eyebrow">{{ isSchool ? "Classroom" : "Batch" }}</p><h2 class="mt-1 font-display text-xl font-semibold text-ink-900">{{ classroom.name }}</h2><p class="mt-1 text-sm text-ink-500">{{ classroom.subject.name }} | {{ classroom.teacher.name }}</p></div>
+        <div class="flex items-center gap-3"><SStatCard label="Enrolled" :value="classroom.students.length" /><button class="s-focus text-sm font-semibold text-primary-700 hover:underline" @click="startEdit(classroom)">Edit</button><button class="s-focus text-sm font-semibold text-danger hover:underline" @click="classroomToDelete = classroom">Delete</button></div>
       </div>
       <form v-if="editingId === classroom.id" class="mt-5 grid gap-3 rounded-md border border-hairline bg-paper p-4 md:grid-cols-4" @submit.prevent="saveEdit">
         <input v-model="editName" class="s-input" aria-label="Classroom name" required />
@@ -75,12 +102,12 @@ async function remove(classroomId: number) {
         <select v-model="editTeacherId" class="s-input" aria-label="Class teacher"><option v-for="teacher in options?.teachers" :key="teacher.id" :value="teacher.id">{{ teacher.name }}</option></select>
         <div class="flex gap-2"><SButton type="submit" variant="secondary">Save</SButton><SButton variant="ghost" @click="editingId = null">Cancel</SButton></div>
       </form>
-      <div class="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-        <SCombobox v-model="selectedStudents[classroom.id]" placeholder="Select a student to enrol" :options="studentOptions.map((student) => ({ ...student, disabled: classroom.students.some((enrolled) => enrolled.id === student.value) }))" />
+      <div class="mt-5 grid gap-3 rounded-md border border-hairline bg-paper p-4 md:grid-cols-[1fr_auto]">
+        <SCombobox v-model="selectedStudents[classroom.id]" :label="isSchool ? 'Enrol student' : 'Enrol learner'" placeholder="Select a student to enrol" :options="studentOptions.map((student) => ({ ...student, disabled: classroom.students.some((enrolled) => enrolled.id === student.value) }))" />
         <SButton variant="secondary" :disabled="!selectedStudents[classroom.id] || session.loading === `enroll-${classroom.id}`" @click="session.enrollClassroomStudent(classroom.id, selectedStudents[classroom.id]!)">Enrol student</SButton>
       </div>
-      <ul v-if="classroom.students.length" class="mt-4 divide-y divide-hairline rounded-md border border-hairline">
-        <li v-for="student in classroom.students" :key="student.id" class="flex items-center justify-between gap-4 px-4 py-3 text-sm"><span class="font-medium text-ink-800">{{ student.name }}</span><button class="s-focus text-sm font-semibold text-danger hover:underline" @click="session.removeClassroomStudent(classroom.id, student.id)">Remove</button></li>
+      <ul v-if="classroom.students.length" class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <li v-for="student in classroom.students" :key="student.id" class="flex items-center justify-between gap-4 rounded-md border border-hairline px-4 py-3 text-sm"><span class="font-medium text-ink-800">{{ student.name }}</span><button class="s-focus text-sm font-semibold text-danger hover:underline" @click="session.removeClassroomStudent(classroom.id, student.id)">Remove</button></li>
       </ul>
     </section>
     <SConfirmDialog

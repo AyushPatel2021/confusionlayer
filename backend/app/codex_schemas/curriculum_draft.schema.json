@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chapters"],
+  "properties": {
+    "chapters": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "topics"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+          "topics": {
+            "type": "array",
+            "maxItems": 40,
+            "items": { "type": "string", "minLength": 1, "maxLength": 180 }
+          }
+        }
+      }
+    }
+  }
+}

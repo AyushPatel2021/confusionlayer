@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 
 import SButton from "../../../components/ui/SButton.vue";
+import SCombobox from "../../../components/ui/SCombobox.vue";
 import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SDatePicker from "../../../components/ui/SDatePicker.vue";
 import SKanbanBoard from "../../../components/ui/SKanbanBoard.vue";
@@ -23,9 +24,12 @@ const columns = [
   { key: "rejected", label: "Rejected", tone: "danger" as const },
 ];
 
-onMounted(() => session.loadApplications());
+onMounted(async () => {
+  await Promise.all([session.loadApplications(), session.loadDashboard()]);
+});
 
-const boardItems = computed(() => session.applications.map((app) => ({ id: app.id, status: app.status, title: app.applicant_name, subtitle: app.grade ? `Grade ${app.grade}` : app.source || "", meta: app.applicant_email || app.source || "" })));
+const classroomOptions = computed(() => (session.dashboard?.classrooms || []).map((room) => ({ label: room.name, value: room.name, hint: room.subject.name })));
+const boardItems = computed(() => session.applications.map((app) => ({ id: app.id, status: app.status, title: app.applicant_name, subtitle: app.grade ? `Class ${app.grade}` : app.source || "", meta: app.applicant_email || app.source || "" })));
 
 async function submit() {
   const saved = editingId.value
@@ -59,13 +63,21 @@ function selectBoardItem(item: { id: string | number }) {
       </template>
     </SPageHeader>
 
-    <form v-if="showForm" class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 sm:grid-cols-2" @submit.prevent="submit">
-      <label class="text-sm">Applicant name<input v-model="form.applicant_name" class="s-input mt-1" required /></label>
-      <label class="text-sm">Email<input v-model="form.applicant_email" type="email" class="s-input mt-1" /></label>
-      <label class="text-sm">Grade applying for<input v-model="form.grade" class="s-input mt-1" /></label>
-      <label class="text-sm">Source<input v-model="form.source" class="s-input mt-1" placeholder="Referral, walk-in..." /></label>
-      <SDatePicker v-model="form.date_of_birth" label="Date of birth" />
-      <label class="text-sm">Notes<input v-model="form.notes" class="s-input mt-1" /></label>
+    <form v-if="showForm" class="rounded-lg border border-hairline bg-surface p-5" @submit.prevent="submit">
+      <div class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <section class="space-y-3">
+          <p class="s-eyebrow">Applicant</p>
+          <label class="text-sm">Applicant name<input v-model="form.applicant_name" class="s-input mt-1" required /></label>
+          <label class="text-sm">Email<input v-model="form.applicant_email" type="email" class="s-input mt-1" /></label>
+          <SDatePicker v-model="form.date_of_birth" label="Date of birth" />
+        </section>
+        <section class="space-y-3">
+          <p class="s-eyebrow">Admission target</p>
+          <SCombobox v-model="form.grade" label="Class applying for" placeholder="Choose class" :options="classroomOptions" />
+          <label class="text-sm">Source<input v-model="form.source" class="s-input mt-1" placeholder="Referral, walk-in..." /></label>
+          <label class="text-sm">Notes<textarea v-model="form.notes" class="s-input mt-1 min-h-24 py-2" /></label>
+        </section>
+      </div>
       <div class="sm:col-span-2">
         <SButton type="submit" variant="primary" :disabled="!form.applicant_name.trim() || session.loading === 'create-application'">
           {{ session.loading === "create-application" ? "Adding..." : editingId ? "Save application" : "Add application" }}

@@ -6,7 +6,8 @@ import SButton from "../../../components/ui/SButton.vue";
 import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
-import { useSessionStore } from "../../../stores/session";
+import SStatCard from "../../../components/ui/SStatCard.vue";
+import { displayRoleLabel, roleLabels, useSessionStore, type Role } from "../../../stores/session";
 
 const session = useSessionStore();
 const email = ref("");
@@ -26,6 +27,21 @@ const visibleMembers = computed(() => session.members.filter((member) => {
   return matchesQuery && (department.value === "all" || member.department === department.value);
 }));
 const departments = computed(() => [...new Set(session.members.map((member) => member.department))]);
+const activeMembers = computed(() => session.members.filter((member) => member.status === "active"));
+const roleMix = computed(() => roles.map((item) => ({
+  role: item,
+  count: session.members.filter((member) => member.role === item).length,
+})).filter((item) => item.count));
+const departmentGroups = computed(() => {
+  const source = visibleMembers.value;
+  const names = department.value === "all" ? departments.value : [department.value];
+  return names.map((name) => ({
+    name,
+    members: source.filter((member) => member.department === name),
+  })).filter((group) => group.members.length);
+});
+const roleLabel = (role: string) => roleLabels[role as Role] || role.replace("_", " ");
+const memberDisplayRole = (role: string) => displayRoleLabel({ role: role as Role, segment: session.user?.segment || null });
 
 onMounted(async () => {
   await session.loadMembers();
@@ -64,18 +80,46 @@ async function removeMember() {
   <div class="space-y-8">
     <SPageHeader eyebrow="Settings" title="Members" subtitle="Invite people to your organization and manage their roles."><template #actions><a href="/api/org/members/export.csv" class="text-sm font-semibold text-primary-700 hover:underline">Export CSV</a></template></SPageHeader>
 
-    <form class="flex flex-wrap items-end gap-3 rounded-lg border border-hairline bg-surface p-5" @submit.prevent="invite">
-      <label class="flex-1 text-sm">Email<input v-model="email" type="email" class="s-input mt-1" required /></label>
-      <label class="text-sm">Role
-        <select v-model="role" class="s-input mt-1 capitalize" @change="roleChanged">
-          <option v-for="r in roles" :key="r" :value="r">{{ r.replace("_", " ") }}</option>
-        </select>
-      </label>
-      <label class="text-sm">Department<select v-model="inviteDepartment" class="s-input mt-1"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select></label>
-      <SButton type="submit" variant="primary" :disabled="!email.trim() || session.loading === 'invite-member'">
-        {{ session.loading === "invite-member" ? "Inviting..." : "Send invite" }}
-      </SButton>
-    </form>
+    <div class="grid gap-4 sm:grid-cols-4">
+      <SStatCard label="Total members" :value="session.members.length" />
+      <SStatCard label="Active" :value="activeMembers.length" tone="success" />
+      <SStatCard label="Pending" :value="session.pendingInvites.length" tone="warning" />
+      <SStatCard label="Departments" :value="departments.length" />
+    </div>
+
+    <section class="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)]">
+      <form class="rounded-lg border border-hairline bg-surface p-5" @submit.prevent="invite">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p class="s-eyebrow">Invite member</p>
+            <p class="mt-1 text-sm text-ink-500">Send role-based access for staff, learners, and families.</p>
+          </div>
+          <SButton type="submit" variant="primary" :disabled="!email.trim() || session.loading === 'invite-member'">
+            {{ session.loading === "invite-member" ? "Inviting..." : "Send invite" }}
+          </SButton>
+        </div>
+        <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
+          <label class="text-sm">Email<input v-model="email" type="email" class="s-input mt-1" required /></label>
+          <label class="text-sm">Role
+            <select v-model="role" class="s-input mt-1 capitalize" @change="roleChanged">
+              <option v-for="r in roles" :key="r" :value="r">{{ roleLabel(r) }}</option>
+            </select>
+          </label>
+          <label class="text-sm">Department<select v-model="inviteDepartment" class="s-input mt-1"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select></label>
+        </div>
+      </form>
+
+      <aside class="rounded-lg border border-hairline bg-surface p-5">
+        <p class="s-eyebrow">Role mix</p>
+        <div class="mt-4 space-y-3">
+          <div v-for="item in roleMix" :key="item.role" class="flex items-center justify-between gap-3">
+            <span class="text-sm font-medium text-ink-700">{{ roleLabel(item.role) }}</span>
+            <SBadge tone="neutral">{{ item.count }}</SBadge>
+          </div>
+          <p v-if="!roleMix.length" class="text-sm text-ink-500">No members yet.</p>
+        </div>
+      </aside>
+    </section>
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 
     <div v-if="session.user?.segment === 'school'" class="rounded-lg border border-hairline bg-surface p-5">
@@ -90,40 +134,62 @@ async function removeMember() {
     </div>
 
     <div class="flex flex-wrap gap-3 rounded-lg border border-hairline bg-surface p-4">
-      <input v-model="query" class="s-input flex-1" placeholder="Search members" aria-label="Search members" />
+      <input v-model="query" class="s-input min-w-60 flex-1" placeholder="Search by name, email, or role" aria-label="Search members" />
       <select v-model="department" class="s-input"><option value="all">All departments</option><option v-for="item in departments" :key="item" :value="item">{{ item }}</option></select>
     </div>
     <SLoadingState v-if="session.loading === 'members' && !session.members.length" :rows="3" />
     <div v-else class="space-y-6">
       <div>
-        <p class="s-eyebrow">Members ({{ session.members.length }})</p>
-        <ul class="mt-3 divide-y divide-hairline overflow-hidden rounded-lg border border-hairline bg-surface">
-          <li v-for="m in visibleMembers" :key="m.id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-            <div>
-              <p class="text-sm font-semibold text-ink-900">{{ m.name || m.email }}</p>
-              <p class="text-xs text-ink-500">{{ m.email }} | {{ m.department }}</p>
+        <div class="flex items-center justify-between gap-3">
+          <p class="s-eyebrow">Members ({{ visibleMembers.length }})</p>
+          <span class="text-xs text-ink-500">{{ department === "all" ? "Grouped by department" : department }}</span>
+        </div>
+        <div v-if="departmentGroups.length" class="mt-3 grid gap-4 xl:grid-cols-2">
+          <section v-for="group in departmentGroups" :key="group.name" class="rounded-lg border border-hairline bg-surface">
+            <div class="flex items-center justify-between border-b border-hairline px-5 py-4">
+              <h2 class="font-display text-lg font-semibold text-ink-900">{{ group.name }}</h2>
+              <SBadge tone="neutral">{{ group.members.length }}</SBadge>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <select v-if="m.role !== 'owner' && !['teacher', 'student'].includes(m.role)" :value="m.role" class="s-input py-1 text-xs" @change="setRole(m.id, $event)">
-                <option v-for="item in roles" :key="item" :value="item">{{ item.replace('_', ' ') }}</option>
-              </select>
-              <select v-if="m.role !== 'owner'" :value="m.department" class="s-input py-1 text-xs" @change="setDepartment(m.id, $event)"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select>
-              <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
-              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
-              <SButton v-if="m.role !== 'owner'" variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="memberToRemove = m">Remove</SButton>
+            <div class="divide-y divide-hairline">
+              <article v-for="m in group.members" :key="m.id" class="p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-ink-900">{{ m.name || m.email }}</p>
+                    <p class="mt-1 truncate text-xs text-ink-500">{{ m.email }}</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <SBadge tone="primary">{{ memberDisplayRole(m.role) }}</SBadge>
+                    <SBadge :tone="m.status === 'active' ? 'success' : 'neutral'">{{ m.status }}</SBadge>
+                  </div>
+                </div>
+                <div v-if="m.role !== 'owner'" class="mt-4 grid gap-2 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_auto_auto]">
+                  <select v-if="!['teacher', 'student'].includes(m.role)" :value="m.role" class="s-input py-2 text-xs" @change="setRole(m.id, $event)">
+                    <option v-for="item in roles" :key="item" :value="item">{{ roleLabel(item) }}</option>
+                  </select>
+                  <div v-else class="rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-500">Role managed by profile</div>
+                  <select :value="m.department" class="s-input py-2 text-xs" @change="setDepartment(m.id, $event)"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select>
+                  <SButton variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
+                  <SButton variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="memberToRemove = m">Remove</SButton>
+                </div>
+              </article>
             </div>
-          </li>
-        </ul>
+          </section>
+        </div>
+        <p v-else class="mt-3 rounded-lg border border-dashed border-hairline bg-surface p-6 text-sm text-ink-500">No members match the current filters.</p>
       </div>
 
       <div v-if="session.pendingInvites.length">
         <p class="s-eyebrow">Pending invitations ({{ session.pendingInvites.length }})</p>
-        <ul class="mt-3 divide-y divide-hairline overflow-hidden rounded-lg border border-dashed border-hairline bg-surface">
-          <li v-for="p in session.pendingInvites" :key="p.id" class="flex items-center justify-between gap-2 px-5 py-3">
-            <span class="text-sm text-ink-700">{{ p.email }}</span>
-            <SBadge tone="warning">{{ p.role.replace("_", " ") }} | {{ p.department }} | pending</SBadge>
-          </li>
-        </ul>
+        <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <article v-for="p in session.pendingInvites" :key="p.id" class="rounded-lg border border-dashed border-hairline bg-surface p-4">
+            <p class="truncate text-sm font-semibold text-ink-900">{{ p.email }}</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <SBadge tone="warning">Pending</SBadge>
+              <SBadge tone="neutral">{{ roleLabel(p.role) }}</SBadge>
+              <SBadge tone="neutral">{{ p.department }}</SBadge>
+            </div>
+          </article>
+        </div>
       </div>
     </div>
     <SConfirmDialog

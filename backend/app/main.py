@@ -21,6 +21,7 @@ from app.ai import (
     generate_tutorial,
     grade_quiz_answer,
     grade_teach_back,
+    refine_curriculum_draft,
 )
 from app.mastery import days_since_review, effective_mastery
 from app.auth import (
@@ -43,11 +44,13 @@ from app.auth import (
     get_current_user,
     get_open_invitation,
     get_or_create_demo_user,
+    hash_password,
     register_org,
     request_password_reset,
     reset_password,
     set_auth_cookie,
     user_response,
+    verify_password,
 )
 from app.briefs import aggregate_confusion, aggregate_forecast
 from app.curriculum import DraftChapter, commit_subject_tree, extract_structure
@@ -169,6 +172,18 @@ class DemoContextResponse(BaseModel):
     classroom: ClassroomResponse
     teacher_count: int
     student_count: int
+
+
+class AccountProfileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    avatar_url: str | None = Field(default=None, max_length=500)
+    contact_number: str | None = Field(default=None, max_length=40)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ConceptSummaryResponse(BaseModel):
@@ -465,6 +480,8 @@ class CurriculumSubjectResponse(BaseModel):
     org_id: int | None
     shared: bool
     chapter_count: int
+    assigned_teachers: list[ClassroomMemberResponse] = Field(default_factory=list)
+    assigned_classrooms: list[ClassroomMemberResponse] = Field(default_factory=list)
 
 
 class CurriculumConceptNode(BaseModel):
@@ -486,11 +503,20 @@ class CurriculumTreeResponse(BaseModel):
     board: str
     class_level: str
     org_id: int | None
+    assigned_teachers: list[ClassroomMemberResponse] = Field(default_factory=list)
+    assigned_classrooms: list[ClassroomMemberResponse] = Field(default_factory=list)
     chapters: list[CurriculumChapterNode]
 
 
 class ImportDraftResponse(BaseModel):
     chapters: list[DraftChapterModel]
+
+
+class ImportRefineRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    board: str = Field(default="CBSE", max_length=80)
+    class_level: str = Field(default="10", max_length=80)
+    chapters: list[DraftChapterModel] = Field(default_factory=list)
 
 
 class PlanResponse(BaseModel):
@@ -805,6 +831,13 @@ class ChildSummaryResponse(BaseModel):
     admission_status: str | None
     outstanding_cents: int
     average_mastery: float | None
+    attendance: dict[str, int] = Field(default_factory=dict)
+    quiz_attempts: int = 0
+    quiz_correct: int = 0
+    teach_back_attempts: int = 0
+    strongest_topics: list[StudentInsightConceptResponse] = Field(default_factory=list)
+    weakest_topics: list[StudentInsightConceptResponse] = Field(default_factory=list)
+    latest_activity_at: datetime | None = None
 
 
 # --- M11: platform admin ---
@@ -819,9 +852,18 @@ class AdminOrgResponse(BaseModel):
 
 class AdminUsageResponse(BaseModel):
     orgs: int
+    school_orgs: int
+    institute_orgs: int
+    individual_orgs: int
     users: int
+    active_users: int
     students: int
+    teachers: int
     invoices: int
+    collected_cents: int
+    outstanding_cents: int
+    employees: int
+    applications: int
 
 
 class AdminAuditLogResponse(BaseModel):
@@ -894,7 +936,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 @app.post("/api/auth/demo", response_model=AuthResponse)
 def demo_login(payload: DemoLoginRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
-    user = get_or_create_demo_user(db, payload.role)
+    user = get_or_create_demo_user(db, payload.role, payload.model)
     return _auth_response(db, user, response)
 
 
@@ -961,6 +1003,40 @@ def create_org_invitation(
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AuthResponse:
     organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
     return AuthResponse(user=user_response(current_user, organization))
+
+
+@app.patch("/api/account/profile", response_model=AuthResponse)
+def update_account_profile(payload: AccountProfileRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AuthResponse:
+    current_user.name = payload.name.strip()
+    profile = dict(current_user.profile_data or {})
+    for key, value in {
+        "phone": payload.phone,
+        "contact_number": payload.contact_number,
+        "avatar_url": payload.avatar_url,
+    }.items():
+        clean = (value or "").strip()
+        if clean:
+            profile[key] = clean
+        else:
+            profile.pop(key, None)
+    current_user.profile_data = profile
+    if current_user.teacher:
+        current_user.teacher.name = current_user.name
+    if current_user.student:
+        current_user.student.name = current_user.name
+    db.commit()
+    db.refresh(current_user)
+    organization = db.get(Organization, current_user.org_id) if current_user.org_id else None
+    return AuthResponse(user=user_response(current_user, organization))
+
+
+@app.post("/api/account/password")
+def change_account_password(payload: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, bool]:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    current_user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")
@@ -1574,13 +1650,42 @@ def _editable_subject(db: Session, user: User, subject_id: int) -> Subject:
     return subject
 
 
-def _subject_tree_response(subject: Subject) -> CurriculumTreeResponse:
+def _subject_assignments(db: Session, subject: Subject, org_id: int | None) -> tuple[list[ClassroomMemberResponse], list[ClassroomMemberResponse]]:
+    classrooms = [classroom for classroom in subject.classrooms if classroom.org_id == org_id]
+    teachers: dict[int, ClassroomMemberResponse] = {}
+    classroom_items: list[ClassroomMemberResponse] = []
+    for classroom in sorted(classrooms, key=lambda row: row.name):
+        classroom_items.append(ClassroomMemberResponse(id=classroom.id, name=classroom.name))
+        if classroom.teacher:
+            teachers[classroom.teacher.id] = ClassroomMemberResponse(id=classroom.teacher.id, name=classroom.teacher.name)
+    return list(teachers.values()), classroom_items
+
+
+def _curriculum_subject_response(db: Session, subject: Subject, org_id: int | None) -> CurriculumSubjectResponse:
+    teachers, classrooms = _subject_assignments(db, subject, org_id)
+    return CurriculumSubjectResponse(
+        id=subject.id,
+        name=subject.name,
+        board=subject.board,
+        class_level=subject.class_level,
+        org_id=subject.org_id,
+        shared=subject.org_id is None,
+        chapter_count=len(subject.chapters),
+        assigned_teachers=teachers,
+        assigned_classrooms=classrooms,
+    )
+
+
+def _subject_tree_response(db: Session, subject: Subject, org_id: int | None) -> CurriculumTreeResponse:
+    teachers, classrooms = _subject_assignments(db, subject, org_id)
     return CurriculumTreeResponse(
         id=subject.id,
         name=subject.name,
         board=subject.board,
         class_level=subject.class_level,
         org_id=subject.org_id,
+        assigned_teachers=teachers,
+        assigned_classrooms=classrooms,
         chapters=[
             CurriculumChapterNode(
                 id=chapter.id,
@@ -1603,15 +1708,7 @@ def list_curriculum_subjects(current_user: User = Depends(get_current_user), db:
         select(Subject).where(or_(Subject.org_id == current_user.org_id, Subject.org_id.is_(None))).order_by(Subject.id)
     ).all()
     return [
-        CurriculumSubjectResponse(
-            id=subject.id,
-            name=subject.name,
-            board=subject.board,
-            class_level=subject.class_level,
-            org_id=subject.org_id,
-            shared=subject.org_id is None,
-            chapter_count=len(subject.chapters),
-        )
+        _curriculum_subject_response(db, subject, current_user.org_id)
         for subject in subjects
     ]
 
@@ -1624,9 +1721,7 @@ def create_curriculum_subject(payload: SubjectCreateRequest, current_user: User 
     _audit(db, current_user, "curriculum.subject_created", subject.name)
     db.commit()
     db.refresh(subject)
-    return CurriculumSubjectResponse(
-        id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level, org_id=subject.org_id, shared=False, chapter_count=0
-    )
+    return _curriculum_subject_response(db, subject, current_user.org_id)
 
 
 @app.patch("/api/curriculum/subjects/{subject_id}", response_model=CurriculumSubjectResponse)
@@ -1635,7 +1730,7 @@ def update_curriculum_subject(subject_id: int, payload: SubjectCreateRequest, cu
     subject.name, subject.board, subject.class_level = payload.name.strip(), payload.board.strip(), payload.class_level.strip()
     _audit(db, current_user, "curriculum.subject_updated", subject.name)
     db.commit()
-    return CurriculumSubjectResponse(id=subject.id, name=subject.name, board=subject.board, class_level=subject.class_level, org_id=subject.org_id, shared=False, chapter_count=len(subject.chapters))
+    return _curriculum_subject_response(db, subject, current_user.org_id)
 
 
 @app.delete("/api/curriculum/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1653,7 +1748,7 @@ def get_curriculum_subject(subject_id: int, current_user: User = Depends(get_cur
     subject = db.get(Subject, subject_id)
     if not subject or subject.org_id not in (None, current_user.org_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
-    return _subject_tree_response(subject)
+    return _subject_tree_response(db, subject, current_user.org_id)
 
 
 @app.post("/api/curriculum/subjects/{subject_id}/chapters", response_model=CurriculumChapterNode, status_code=status.HTTP_201_CREATED)
@@ -1733,6 +1828,23 @@ def import_curriculum_pdf(file: UploadFile = File(...), current_user: User = Dep
     return ImportDraftResponse(chapters=[DraftChapterModel(title=d.title, topics=d.topics) for d in drafts])
 
 
+@app.post("/api/curriculum/import/refine", response_model=ImportDraftResponse)
+def refine_curriculum_import(payload: ImportRefineRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ImportDraftResponse:
+    _require_curriculum_editor(current_user)
+    if not payload.chapters:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Import a draft before refining it")
+    check_and_increment_ai_usage(db, current_user)
+    content = refine_curriculum_draft(
+        board=payload.board,
+        class_level=payload.class_level,
+        subject_name=payload.name,
+        chapters=[{"title": chapter.title, "topics": chapter.topics} for chapter in payload.chapters],
+    )
+    if not content.chapters:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Codex did not return a usable curriculum outline")
+    return ImportDraftResponse(chapters=[DraftChapterModel(title=str(chapter["title"]), topics=list(chapter.get("topics", []))) for chapter in content.chapters])
+
+
 @app.post("/api/curriculum/import/commit", response_model=CurriculumTreeResponse, status_code=status.HTTP_201_CREATED)
 def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CurriculumTreeResponse:
     _require_curriculum_editor(current_user)
@@ -1740,7 +1852,7 @@ def commit_curriculum_import(payload: ImportCommitRequest, current_user: User = 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one chapter is required")
     drafts = [DraftChapter(title=chapter.title, topics=list(chapter.topics)) for chapter in payload.chapters]
     subject = commit_subject_tree(db, current_user.org_id, payload.name, payload.board, payload.class_level, drafts)
-    return _subject_tree_response(subject)
+    return _subject_tree_response(db, subject, current_user.org_id)
 
 
 ORG_ADMIN_ROLES = {"owner", "school_admin", "admin"}
@@ -2007,15 +2119,41 @@ def dashboard(current_user: User = Depends(get_current_user), db: Session = Depe
             classrooms=[_managed_classroom_response(classroom) for classroom in classrooms],
         )
 
-    if current_user.role in {"accountant", "hr"}:
+    if current_user.role == "accountant":
         org = _current_org(db, current_user)
-        member_count = int(db.scalar(select(func.count(User.id)).where(User.org_id == org.id)) or 0)
-        classroom_count = int(db.scalar(select(func.count(Classroom.id)).where(Classroom.org_id == org.id)) or 0)
+        invoices = db.scalars(select(Invoice).where(Invoice.org_id == org.id, Invoice.voided.is_(False))).all()
+        paid = _paid_cents_map(db, org.id)
+        billed = sum(invoice.amount_cents for invoice in invoices)
+        collected = sum(min(paid.get(invoice.id, 0), invoice.amount_cents) for invoice in invoices)
+        outstanding = max(0, billed - collected)
         return DashboardResponse(
             role=current_user.role,
-            title="Workspace overview",
-            metrics=[DashboardMetricResponse(label="Organization", value=org.name), DashboardMetricResponse(label="Members", value=str(member_count)), DashboardMetricResponse(label="Classrooms", value=str(classroom_count))],
-            chart=DashboardChartResponse(label="Organization records", labels=["Members", "Classrooms"], values=[member_count, classroom_count]),
+            title="Accounts overview",
+            metrics=[
+                DashboardMetricResponse(label="Invoices", value=str(len(invoices))),
+                DashboardMetricResponse(label="Collected", value=f"INR {collected / 100:,.0f}"),
+                DashboardMetricResponse(label="Outstanding", value=f"INR {outstanding / 100:,.0f}"),
+                DashboardMetricResponse(label="Workspace", value=org.name),
+            ],
+            chart=DashboardChartResponse(label="Fee movement", labels=["Billed", "Collected", "Outstanding"], values=[billed / 100, collected / 100, outstanding / 100]),
+        )
+
+    if current_user.role == "hr":
+        org = _current_org(db, current_user)
+        active = int(db.scalar(select(func.count(Employee.id)).where(Employee.org_id == org.id, Employee.status == "active")) or 0)
+        inactive = int(db.scalar(select(func.count(Employee.id)).where(Employee.org_id == org.id, Employee.status == "inactive")) or 0)
+        payroll_runs = int(db.scalar(select(func.count(PayrollRun.id)).where(PayrollRun.org_id == org.id)) or 0)
+        monthly_payroll = int(db.scalar(select(func.sum(Employee.salary_cents)).where(Employee.org_id == org.id, Employee.status == "active")) or 0)
+        return DashboardResponse(
+            role=current_user.role,
+            title="HR overview",
+            metrics=[
+                DashboardMetricResponse(label="Active staff", value=str(active)),
+                DashboardMetricResponse(label="Inactive staff", value=str(inactive)),
+                DashboardMetricResponse(label="Payroll runs", value=str(payroll_runs)),
+                DashboardMetricResponse(label="Monthly payroll", value=f"INR {monthly_payroll / 100:,.0f}"),
+            ],
+            chart=DashboardChartResponse(label="Staff and payroll", labels=["Active staff", "Inactive staff", "Payroll runs"], values=[active, inactive, payroll_runs]),
         )
 
     org = _require_org_admin(current_user) or _current_org(db, current_user)
@@ -2778,12 +2916,46 @@ def _child_summary(db: Session, student: Student) -> ChildSummaryResponse:
         outstanding += max(0, invoice.amount_cents - int(paid))
     mastery_rows = db.scalars(select(MasteryRecord.computed_mastery).where(MasteryRecord.student_id == student.id)).all()
     average = round(sum(mastery_rows) / len(mastery_rows), 4) if mastery_rows else None
+    concept_rows = db.execute(
+        select(MasteryRecord, Concept, Chapter)
+        .join(Concept, Concept.id == MasteryRecord.concept_id)
+        .join(Chapter, Chapter.id == Concept.chapter_id)
+        .where(MasteryRecord.student_id == student.id)
+        .order_by(MasteryRecord.computed_mastery.desc())
+    ).all()
+    concepts = [
+        StudentInsightConceptResponse(
+            concept_id=concept.id,
+            title=concept.title,
+            chapter_title=chapter.title,
+            effective_mastery=effective_mastery(record.computed_mastery, days_since_review(record.last_reviewed_at)),
+            forecast_risk=None,
+        )
+        for record, concept, chapter in concept_rows
+    ]
+    attendance_rows = db.execute(
+        select(AttendanceRecord.status, func.count(AttendanceRecord.id))
+        .where(AttendanceRecord.student_id == student.id)
+        .group_by(AttendanceRecord.status)
+    ).all()
+    quiz_count = int(db.scalar(select(func.count(QuizAttempt.id)).where(QuizAttempt.student_id == student.id)) or 0)
+    quiz_correct = int(db.scalar(select(func.count(QuizAttempt.id)).where(QuizAttempt.student_id == student.id, QuizAttempt.is_correct.is_(True))) or 0)
+    teach_back_count = int(db.scalar(select(func.count(TeachBackAttempt.id)).where(TeachBackAttempt.student_id == student.id)) or 0)
+    latest_mastery = db.scalar(select(func.max(MasteryRecord.last_reviewed_at)).where(MasteryRecord.student_id == student.id))
+    latest_values = [value for value in (latest_mastery,) if value]
     return ChildSummaryResponse(
         student_id=student.id,
         name=student.name,
         admission_status=admission.status if admission else None,
         outstanding_cents=outstanding,
         average_mastery=average,
+        attendance={key: int(value) for key, value in attendance_rows},
+        quiz_attempts=quiz_count,
+        quiz_correct=quiz_correct,
+        teach_back_attempts=teach_back_count,
+        strongest_topics=concepts[:3],
+        weakest_topics=sorted(concepts, key=lambda item: item.effective_mastery)[:3],
+        latest_activity_at=max(latest_values) if latest_values else None,
     )
 
 
@@ -2847,11 +3019,20 @@ def admin_list_orgs(current_user: User = Depends(get_current_user), db: Session 
 def admin_usage(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AdminUsageResponse:
     _require_platform_admin(current_user)
     count = lambda model: int(db.scalar(select(func.count(model.id))) or 0)  # noqa: E731
+    invoices = db.scalars(select(Invoice).where(Invoice.voided.is_(False))).all()
+    paid = {invoice.id: int(db.scalar(select(func.sum(Payment.amount_cents)).where(Payment.invoice_id == invoice.id)) or 0) for invoice in invoices}
     return AdminUsageResponse(
         orgs=count(Organization),
+        school_orgs=int(db.scalar(select(func.count(Organization.id)).where(Organization.segment == "school")) or 0),
+        institute_orgs=int(db.scalar(select(func.count(Organization.id)).where(Organization.segment == "institute")) or 0),
+        individual_orgs=int(db.scalar(select(func.count(Organization.id)).where(Organization.segment == "individual")) or 0),
         users=count(User),
+        active_users=int(db.scalar(select(func.count(User.id)).where(User.status == "active")) or 0),
         students=count(Student),
-        invoices=count(Invoice),
+        teachers=count(Teacher),
+        invoices=len(invoices),
+        collected_cents=sum(paid.values()),
+        outstanding_cents=sum(max(0, invoice.amount_cents - paid.get(invoice.id, 0)) for invoice in invoices),
         employees=count(Employee),
         applications=count(AdmissionApplication),
     )
@@ -2912,8 +3093,6 @@ def _get_user_classroom(db: Session, user: User) -> Classroom:
             .where(ClassroomStudent.student_id == user.student_id)
             .order_by(Classroom.id)
         )
-    elif user.role == "admin":
-        classroom = db.scalar(select(Classroom).order_by(Classroom.id))
     else:
         classroom = None
 
@@ -3088,7 +3267,22 @@ def list_attendance(classroom_id: int, attendance_date: date = date.today(), cur
     classroom = _require_teacher_classroom(db, current_user, classroom_id, "view attendance")
     rows = db.scalars(select(AttendanceRecord).where(AttendanceRecord.classroom_id == classroom.id, AttendanceRecord.attendance_date == attendance_date)).all()
     statuses = {row.student_id: row for row in rows}
-    return {"date": attendance_date, "classroom_id": classroom.id, "students": [{"id": link.student.id, "name": link.student.name, "status": statuses.get(link.student.id).status if link.student.id in statuses else None, "note": statuses.get(link.student.id).note if link.student.id in statuses else None} for link in classroom.students]}
+    enrolled = sorted(classroom.students, key=lambda link: (link.student.roll_number or "999999", link.student.name.lower()))
+    return {
+        "date": attendance_date,
+        "classroom_id": classroom.id,
+        "students": [
+            {
+                "id": link.student.id,
+                "name": link.student.name,
+                "roll_number": link.student.roll_number,
+                "section": link.student.section,
+                "status": statuses.get(link.student.id).status if link.student.id in statuses else None,
+                "note": statuses.get(link.student.id).note if link.student.id in statuses else None,
+            }
+            for link in enrolled
+        ],
+    }
 
 
 @app.put("/api/attendance/classrooms/{classroom_id}")

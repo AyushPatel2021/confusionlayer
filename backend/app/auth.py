@@ -18,7 +18,7 @@ import re
 
 from app.db import get_db
 from app.mail import send_email
-from app.models import GuardianLink, Invitation, Organization, PasswordReset, Plan, Student, Subscription, Teacher, User
+from app.models import Classroom, ClassroomStudent, GuardianLink, Invitation, Organization, PasswordReset, Plan, Student, Subject, Subscription, Teacher, User
 
 Role = Literal["admin", "teacher", "student"]
 Segment = Literal["school", "institute", "individual"]
@@ -43,7 +43,8 @@ class LoginRequest(BaseModel):
 
 
 class DemoLoginRequest(BaseModel):
-    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent"] = "teacher"
+    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent", "platform_admin"] = "teacher"
+    model: Literal["school", "institute", "individual", "platform"] | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -262,31 +263,101 @@ def create_user(db: Session, payload: SignupRequest) -> User:
     return user
 
 
+def _ensure_demo_org(db: Session, model: Literal["school", "institute", "individual"]) -> Organization:
+    names = {
+        "school": "ConfusionLayer Demo School",
+        "institute": "ConfusionLayer Demo Institute",
+        "individual": "Individual Learning Demo",
+    }
+    slugs = {
+        "school": "demo-school",
+        "institute": "demo-institute",
+        "individual": "demo-individual",
+    }
+    org = db.scalar(select(Organization).where(Organization.slug == slugs[model]))
+    if org:
+        return org
+
+    plan = db.scalar(select(Plan).where(Plan.code == _SEGMENT_DEFAULT_PLAN[model]))
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Plans are not configured")
+    org = Organization(name=names[model], slug=slugs[model], segment=model)
+    db.add(org)
+    db.flush()
+    db.add(Subscription(org_id=org.id, plan_id=plan.id, status="active"))
+    return org
+
+
+def _ensure_demo_classroom(db: Session, org: Organization, student: Student | None = None) -> Classroom:
+    classroom = db.scalar(select(Classroom).where(Classroom.org_id == org.id).order_by(Classroom.id))
+    if not classroom:
+        teacher = Teacher(name=f"Demo {org.segment.title()} Teacher")
+        db.add(teacher)
+        db.flush()
+        subject = db.scalar(
+            select(Subject).where(
+                Subject.name == f"Demo {org.segment.title()} Science",
+                Subject.board == "CBSE",
+                Subject.class_level == "10",
+            )
+        )
+        if not subject:
+            subject = Subject(org_id=org.id, name=f"Demo {org.segment.title()} Science", board="CBSE", class_level="10")
+            db.add(subject)
+            db.flush()
+        classroom = Classroom(org_id=org.id, teacher_id=teacher.id, subject_id=subject.id, name="Personal Learning" if org.segment == "individual" else "Demo Batch")
+        db.add(classroom)
+        db.flush()
+    if student and not db.scalar(select(ClassroomStudent.id).where(ClassroomStudent.classroom_id == classroom.id, ClassroomStudent.student_id == student.id)):
+        db.add(ClassroomStudent(classroom_id=classroom.id, student_id=student.id))
+    return classroom
+
+
 def get_or_create_demo_user(
     db: Session,
-    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent"],
+    role: Literal["owner", "school_admin", "accountant", "hr", "teacher", "student", "parent", "platform_admin"],
+    model: Literal["school", "institute", "individual", "platform"] | None = None,
 ) -> User:
-    email = f"demo.{role}@confusionlayer.local"
+    legacy_demo = model is None
+    demo_model = model or ("platform" if role == "platform_admin" else "school")
+    email = f"demo.{role}@confusionlayer.local" if legacy_demo else f"demo.{demo_model}.{role}@confusionlayer.local"
     existing = db.scalar(select(User).where(User.email == email))
     if existing:
         return existing
 
-    org = db.scalar(select(Organization).order_by(Organization.id))
+    if role == "platform_admin":
+        user = User(email=email, name="Demo Platform Admin", password_hash=hash_password(secrets.token_urlsafe(32)), role="platform_admin", org_id=None, department="Platform")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    org = db.scalar(select(Organization).order_by(Organization.id)) if legacy_demo else _ensure_demo_org(db, "individual" if demo_model == "individual" else "institute" if demo_model == "institute" else "school")
     org_id = org.id if org else None
     if role == "teacher":
-        teacher = db.scalar(select(Teacher).order_by(Teacher.id))
+        teacher = db.scalar(select(Teacher).order_by(Teacher.id)) if legacy_demo or not org else db.scalar(select(Teacher).join(User, User.teacher_id == Teacher.id).where(User.org_id == org.id).order_by(Teacher.id))
         if not teacher:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo teacher seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id, department="Teaching & learning")
+            if legacy_demo:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo teacher seed data is missing")
+            teacher = Teacher(name=f"Demo {org.segment.title()} Teacher")
+            db.add(teacher)
+            db.flush()
+        user = User(email=email, name=teacher.name, password_hash=hash_password(secrets.token_urlsafe(32)), role="teacher", teacher_id=teacher.id, org_id=org_id, department="Teaching & learning")
     elif role == "student":
-        student = db.scalar(select(Student).order_by(Student.id))
+        student = db.scalar(select(Student).order_by(Student.id)) if legacy_demo or not org else db.scalar(select(Student).join(User, User.student_id == Student.id).where(User.org_id == org.id).order_by(Student.id))
         if not student:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo student seed data is missing")
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id, department="Learning")
+            if legacy_demo:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo student seed data is missing")
+            student = Student(name="Demo Individual Learner" if org.segment == "individual" else f"Demo {org.segment.title()} Student")
+            db.add(student)
+            db.flush()
+        if org and not legacy_demo:
+            _ensure_demo_classroom(db, org, student)
+        user = User(email=email, name=student.name, password_hash=hash_password(secrets.token_urlsafe(32)), role="student", student_id=student.id, org_id=org_id, department="Learning")
     else:
         if not org:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Demo organization seed data is missing")
-        names = {"owner": "Demo Owner", "school_admin": "Demo School Admin", "accountant": "Demo Accountant", "hr": "Demo HR", "parent": "Demo Parent"}
+        names = {"owner": f"Demo {org.segment.title()} Owner", "school_admin": "Demo School Admin", "accountant": "Demo Accountant", "hr": "Demo HR", "parent": "Demo Parent"}
         departments = {"owner": "School leadership", "school_admin": "Front-office", "accountant": "Accounts", "hr": "HR", "parent": "Family"}
         user = User(email=email, name=names[role], password_hash=hash_password(secrets.token_urlsafe(32)), role=role, org_id=org.id, department=departments[role])
 

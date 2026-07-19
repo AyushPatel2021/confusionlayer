@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 
-type Role =
+export type Role =
   | "admin"
   | "owner"
   | "school_admin"
@@ -10,6 +10,31 @@ type Role =
   | "student"
   | "parent"
   | "platform_admin";
+
+export type DemoModel = "school" | "institute" | "individual" | "platform";
+
+export const roleLabels: Record<Role, string> = {
+  admin: "Legacy Admin",
+  owner: "Owner",
+  school_admin: "School Admin",
+  accountant: "Accountant",
+  hr: "HR",
+  teacher: "Teacher",
+  student: "Student",
+  parent: "Parent",
+  platform_admin: "Platform Admin",
+};
+
+export function displayRoleLabel(user: Pick<User, "role" | "segment"> | null | undefined): string {
+  if (!user) return "Member";
+  if (user.role === "owner") {
+    if (user.segment === "school") return "School Owner";
+    if (user.segment === "institute") return "Institute Owner";
+    if (user.segment === "individual") return "Individual Learner";
+  }
+  if (user.role === "student" && user.segment === "individual") return "Individual Learner";
+  return roleLabels[user.role];
+}
 
 interface User {
   id: number;
@@ -205,6 +230,8 @@ export interface CurriculumSubject {
   org_id: number | null;
   shared: boolean;
   chapter_count: number;
+  assigned_teachers: ClassroomMember[];
+  assigned_classrooms: ClassroomMember[];
 }
 
 export interface CurriculumConceptNode {
@@ -226,6 +253,8 @@ export interface CurriculumTree {
   board: string;
   class_level: string;
   org_id: number | null;
+  assigned_teachers: ClassroomMember[];
+  assigned_classrooms: ClassroomMember[];
   chapters: CurriculumChapterNode[];
 }
 
@@ -338,6 +367,13 @@ export interface Child {
   admission_status: string | null;
   outstanding_cents: number;
   average_mastery: number | null;
+  attendance: Record<string, number>;
+  quiz_attempts: number;
+  quiz_correct: number;
+  teach_back_attempts: number;
+  strongest_topics: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
+  weakest_topics: Array<{ concept_id: number; title: string; chapter_title: string; effective_mastery: number; forecast_risk: number | null }>;
+  latest_activity_at: string | null;
 }
 
 export interface AdminOrg {
@@ -351,9 +387,16 @@ export interface AdminOrg {
 
 export interface AdminUsage {
   orgs: number;
+  school_orgs: number;
+  institute_orgs: number;
+  individual_orgs: number;
   users: number;
+  active_users: number;
   students: number;
+  teachers: number;
   invoices: number;
+  collected_cents: number;
+  outstanding_cents: number;
   employees: number;
   applications: number;
 }
@@ -383,7 +426,7 @@ export interface OrganizationSettings { id: number; name: string; slug: string; 
 export interface SearchResult { kind: string; title: string; subtitle: string; href: string; }
 export interface NotificationItem { id: number; title: string; body: string | null; href: string | null; read: boolean; created_at: string; }
 export interface StudentReport { student_id: number; student_name: string; profile: { roll_number: string | null; section: string | null; date_of_birth: string | null; guardian_name: string | null; guardian_phone: string | null }; learning: Array<{ concept: string; chapter: string; mastery: number }>; fees: { outstanding_cents: number }; attendance: Record<string, number>; }
-export interface AttendanceStudent { id: number; name: string; status: "present" | "absent" | "late" | "excused" | null; note: string | null; }
+export interface AttendanceStudent { id: number; name: string; roll_number: string | null; section: string | null; status: "present" | "absent" | "late" | "excused" | null; note: string | null; }
 export interface TimetableEntry { id: number; classroom_id: number; classroom: string; weekday: number; starts_at: string; ends_at: string; room: string | null; }
 export interface LibraryBook { id: number; title: string; author: string | null; isbn: string | null; copies_total: number; copies_available: number; }
 export interface TransportRoute { id: number; name: string; vehicle_label: string | null; driver_name: string | null; stops: string[]; student_count: number; }
@@ -460,11 +503,11 @@ export const useSessionStore = defineStore("session", {
   getters: {
     // Staff-side roles that use the teacher learning views.
     isTeacher: (state) =>
-      ["teacher", "owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
+      ["teacher", "owner", "school_admin"].includes(state.user?.role ?? ""),
     isStudent: (state) => state.user?.role === "student",
-    isAdmin: (state) => state.user?.role === "admin" || state.user?.role === "platform_admin",
-    isOrgAdmin: (state) => ["owner", "school_admin", "admin"].includes(state.user?.role ?? ""),
-    isOwner: (state) => state.user?.role === "owner" || state.user?.role === "admin",
+    isAdmin: (state) => state.user?.role === "platform_admin",
+    isOrgAdmin: (state) => ["owner", "school_admin"].includes(state.user?.role ?? ""),
+    isOwner: (state) => state.user?.role === "owner",
     isParent: (state) => state.user?.role === "parent",
     isPlatformAdmin: (state) => state.user?.role === "platform_admin",
     isAuthenticated: (state) => !!state.user,
@@ -472,13 +515,13 @@ export const useSessionStore = defineStore("session", {
       state.user?.role === "platform_admin" ? "/admin" : "/app/dashboard",
   },
   actions: {
-    async demoLogin(role: "owner" | "school_admin" | "accountant" | "hr" | "teacher" | "student" | "parent") {
-      this.loading = `demo-${role}`;
+    async demoLogin(role: Role, model?: DemoModel) {
+      this.loading = `demo-${model || role}`;
       this.error = "";
       try {
         const response = await api<AuthResponse>("/api/auth/demo", {
           method: "POST",
-          body: JSON.stringify({ role }),
+          body: JSON.stringify({ role, model }),
         });
         this.user = response.user;
         this.authReady = true;
@@ -493,7 +536,7 @@ export const useSessionStore = defineStore("session", {
         this.confusionNarratives = {};
         this.selfStartTutorial = null;
         this.progress = null;
-        await this.loadSyllabus();
+        if (response.user.role !== "platform_admin" && response.user.segment !== "individual") await this.loadSyllabus();
       } catch (error) {
         this.error = messageFromError(error);
       } finally {
@@ -660,6 +703,33 @@ export const useSessionStore = defineStore("session", {
     },
     async readNotification(id: number) {
       try { await api(`/api/notifications/${id}/read`, { method: "POST" }); const item = this.notifications.find((row) => row.id === id); if (item && !item.read) { item.read = true; this.notificationUnread = Math.max(0, this.notificationUnread - 1); } } catch { /* non-blocking */ }
+    },
+    async saveAccountProfile(payload: { name: string; phone?: string; contact_number?: string; avatar_url?: string }): Promise<boolean> {
+      this.loading = "account-profile";
+      this.error = "";
+      try {
+        const response = await api<AuthResponse>("/api/account/profile", { method: "PATCH", body: JSON.stringify(payload) });
+        this.user = response.user;
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
+    async changeAccountPassword(current_password: string, new_password: string): Promise<boolean> {
+      this.loading = "account-password";
+      this.error = "";
+      try {
+        await api("/api/account/password", { method: "POST", body: JSON.stringify({ current_password, new_password }) });
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
     },
     async loadOrgSettings() { this.loading = "org-settings"; this.error = ""; try { this.orgSettings = await api<OrganizationSettings>("/api/org/settings"); } catch (error) { this.error = messageFromError(error); } finally { this.loading = ""; } },
     async saveOrgSettings(payload: Omit<OrganizationSettings, "id" | "slug" | "segment">): Promise<boolean> { this.loading = "org-settings"; this.error = ""; try { this.orgSettings = await api<OrganizationSettings>("/api/org/settings", { method: "PATCH", body: JSON.stringify(payload) }); if (this.user) this.user.org_name = this.orgSettings.name; return true; } catch (error) { this.error = messageFromError(error); return false; } finally { this.loading = ""; } },
@@ -1111,6 +1181,20 @@ export const useSessionStore = defineStore("session", {
         this.loading = "";
       }
     },
+    async refineImport(payload: { name: string; board?: string; class_level?: string; chapters: DraftChapter[] }): Promise<boolean> {
+      this.loading = "refine-import";
+      this.error = "";
+      try {
+        const response = await api<{ chapters: DraftChapter[] }>("/api/curriculum/import/refine", { method: "POST", body: JSON.stringify(payload) });
+        this.importDraft = response.chapters;
+        return true;
+      } catch (error) {
+        this.error = messageFromError(error);
+        return false;
+      } finally {
+        this.loading = "";
+      }
+    },
     async loadOrg() {
       this.loading = "org";
       this.error = "";
@@ -1496,11 +1580,19 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
   const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed with ${response.status}`);
+  const text = await response.text();
+  let body: any;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = undefined;
+    }
   }
-  return (await response.json()) as T;
+  if (!response.ok) {
+    throw new Error(body?.detail || `Request failed with ${response.status}`);
+  }
+  return body as T;
 }
 
 function messageFromError(error: unknown): string {

@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
+import SCombobox from "../../../components/ui/SCombobox.vue";
 import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SDialog from "../../../components/ui/SDialog.vue";
 import SEmptyState from "../../../components/ui/SEmptyState.vue";
@@ -13,6 +14,7 @@ import { useSessionStore } from "../../../stores/session";
 
 const session = useSessionStore();
 const newSubject = ref("");
+const classroomFilter = ref<number | null>(null);
 const selectedId = ref<number | null>(null);
 const newChapter = ref("");
 const newConcept = ref<Record<number, string>>({});
@@ -21,10 +23,24 @@ const deleteTarget = ref<{ path: string; subjectId?: number; label: string } | n
 
 const tree = computed(() => session.curriculumTree);
 const editable = computed(() => tree.value && tree.value.org_id !== null && tree.value.org_id === session.user?.org_id);
+const classrooms = computed(() => session.dashboard?.classrooms || []);
+const classroomOptions = computed(() => classrooms.value.map((room) => ({ label: room.name, value: room.id, hint: room.subject.name })));
+const scopedSubjectIds = computed(() => new Set(classrooms.value.filter((room) => !classroomFilter.value || room.id === classroomFilter.value).map((room) => room.subject.id)));
+const visibleSubjects = computed(() => {
+  if (!classrooms.value.length) return session.curriculumSubjects;
+  return session.curriculumSubjects.filter((subject) => scopedSubjectIds.value.has(subject.id));
+});
+const canCreateSubject = computed(() => session.isOrgAdmin);
 
-onMounted(() => session.loadCurriculumSubjects());
+onMounted(async () => {
+  await Promise.all([session.loadDashboard(), session.loadCurriculumSubjects()]);
+  classroomFilter.value = classrooms.value[0]?.id || null;
+  const firstSubject = visibleSubjects.value[0];
+  if (firstSubject) await select(firstSubject.id);
+});
 
 async function addSubject() {
+  if (!canCreateSubject.value) return;
   const created = await session.createSubject({ name: newSubject.value });
   if (created) {
     newSubject.value = "";
@@ -65,6 +81,17 @@ async function confirmRemove() {
   await session.deleteCurriculumItem(deleteTarget.value.path, deleteTarget.value.subjectId);
   deleteTarget.value = null;
 }
+async function applyClassroomFilter() {
+  const firstSubject = visibleSubjects.value[0];
+  if (!firstSubject) {
+    selectedId.value = null;
+    session.curriculumTree = null;
+    return;
+  }
+  if (!selectedId.value || !visibleSubjects.value.some((subject) => subject.id === selectedId.value)) {
+    await select(firstSubject.id);
+  }
+}
 </script>
 
 <template>
@@ -78,13 +105,22 @@ async function confirmRemove() {
     <div class="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
       <!-- Subjects list -->
       <aside class="space-y-4">
-        <form class="flex gap-2" @submit.prevent="addSubject">
+        <SCombobox
+          v-if="classroomOptions.length"
+          v-model="classroomFilter"
+          label="Classroom context"
+          placeholder="Choose classroom"
+          :options="classroomOptions"
+          @change="applyClassroomFilter"
+        />
+        <form v-if="canCreateSubject" class="flex gap-2" @submit.prevent="addSubject">
           <input v-model="newSubject" class="s-input" placeholder="New subject name" />
           <SButton type="submit" variant="primary" :disabled="!newSubject.trim() || session.loading === 'create-subject'">Add</SButton>
         </form>
+        <p v-else class="rounded-md border border-hairline bg-surface px-4 py-3 text-sm text-ink-500">Showing only curriculum connected to your assigned classroom.</p>
         <SLoadingState v-if="session.loading === 'curriculum' && !session.curriculumSubjects.length" :rows="3" />
         <ul v-else class="space-y-2">
-          <li v-for="s in session.curriculumSubjects" :key="s.id">
+          <li v-for="s in visibleSubjects" :key="s.id">
             <button
               class="s-focus flex w-full items-center justify-between gap-2 rounded-md border px-4 py-3 text-left text-sm transition"
               :class="selectedId === s.id ? 'border-primary-600 bg-primary-50' : 'border-hairline bg-surface hover:border-primary-500'"
@@ -97,6 +133,7 @@ async function confirmRemove() {
               <SBadge v-if="s.shared" tone="neutral">shared</SBadge>
             </button>
           </li>
+          <li v-if="!visibleSubjects.length" class="rounded-md border border-hairline bg-surface px-4 py-5 text-sm text-ink-500">No subject is connected to this classroom yet.</li>
         </ul>
       </aside>
 
@@ -105,8 +142,30 @@ async function confirmRemove() {
         <SEmptyState v-if="!tree" title="Select a subject" message="Pick a subject on the left, or create one, to manage its chapters and topics." />
         <div v-else class="space-y-5">
           <div class="flex items-center justify-between gap-3">
-            <h2 class="font-display text-xl font-semibold text-ink-900">{{ tree.name }}</h2>
+            <div>
+              <h2 class="font-display text-xl font-semibold text-ink-900">{{ tree.name }}</h2>
+              <p class="mt-1 text-sm text-ink-500">
+                <template v-if="tree.assigned_classrooms.length">
+                  Used by {{ tree.assigned_classrooms.map((item) => item.name).join(", ") }}
+                </template>
+                <template v-else>No classroom is using this subject yet.</template>
+              </p>
+            </div>
             <div class="flex items-center gap-2"><SBadge v-if="!editable" tone="neutral">read-only</SBadge><template v-if="editable"><SButton variant="ghost" @click="rename(`/api/curriculum/subjects/${tree.id}`, tree.name, tree.id, 'name')">Edit</SButton><SButton variant="ghost" @click="remove(`/api/curriculum/subjects/${tree.id}`, undefined, tree.name)">Delete</SButton></template></div>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2">
+            <section class="rounded-lg border border-hairline bg-surface p-4">
+              <p class="s-eyebrow">Assigned teachers</p>
+              <div v-if="tree.assigned_teachers.length" class="mt-3 flex flex-wrap gap-2">
+                <SBadge v-for="teacher in tree.assigned_teachers" :key="teacher.id" tone="primary">{{ teacher.name }}</SBadge>
+              </div>
+              <p v-else class="mt-3 text-sm text-ink-500">Assign a teacher by creating or editing a classroom for this subject.</p>
+            </section>
+            <section class="rounded-lg border border-hairline bg-surface p-4">
+              <p class="s-eyebrow">Hierarchy</p>
+              <p class="mt-2 text-sm text-ink-600">School -> Classroom -> Subject -> Teacher. Subject assignment is managed from Classrooms so one subject can be taught in multiple classes.</p>
+              <RouterLink to="/app/classrooms" class="mt-3 inline-block text-sm font-semibold text-primary-700 hover:underline">Manage classroom assignments</RouterLink>
+            </section>
           </div>
 
           <div v-for="chapter in tree.chapters" :key="chapter.id" class="rounded-lg border border-hairline bg-surface p-5">

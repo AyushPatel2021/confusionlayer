@@ -30,6 +30,13 @@ const paymentTarget = ref<Invoice | null>(null);
 const paymentAmount = ref("");
 const studentSelectOptions = computed(() => session.studentOptions.map((student) => ({ label: student.name, value: student.id })));
 const structureOptions = computed(() => session.feeStructures.map((structure) => ({ label: structure.name, value: structure.id, hint: money(structure.amount_cents) })));
+const openInvoices = computed(() => session.invoices.filter((invoice) => !invoice.voided && invoice.status !== "paid"));
+const invoiceGroups = computed(() => [
+  { label: "Needs collection", invoices: openInvoices.value },
+  { label: "Settled", invoices: session.invoices.filter((invoice) => invoice.status === "paid") },
+  { label: "Voided", invoices: session.invoices.filter((invoice) => invoice.voided) },
+].filter((group) => group.invoices.length));
+const collectionFocus = computed(() => [...openInvoices.value].sort((a, b) => remaining(b) - remaining(a)).slice(0, 5));
 const multiselectStudents = computed({
   get: () => selectedStudentIds.value,
   set: (value: Array<number | string>) => {
@@ -43,6 +50,14 @@ const money = (cents: number) => `₹${(cents / 100).toLocaleString("en-IN", { m
 
 function statusTone(s: string) {
   return s === "paid" ? "success" : s === "partial" ? "warning" : s === "void" ? "neutral" : "danger";
+}
+
+function remaining(inv: Invoice) {
+  return Math.max(0, inv.amount_cents - inv.paid_cents);
+}
+
+function invoiceDate(inv: Invoice) {
+  return new Date(inv.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
 async function submit() {
@@ -112,31 +127,70 @@ async function recordPayment() {
     <p v-if="session.error" class="text-sm text-danger">{{ session.error }}</p>
 
     <SLoadingState v-if="session.loading === 'fees' && !session.invoices.length" :rows="3" />
-    <div v-else-if="session.invoices.length" class="overflow-hidden rounded-lg border border-hairline bg-surface">
-      <table class="w-full text-sm">
-        <thead class="bg-surface-sunken text-left text-xs uppercase tracking-wide text-ink-500">
-          <tr><th class="px-4 py-3">Bill to</th><th class="px-4 py-3">Amount</th><th class="px-4 py-3">Paid</th><th class="px-4 py-3">Status</th><th class="px-4 py-3"></th></tr>
-        </thead>
-        <tbody class="divide-y divide-hairline">
-          <tr v-for="inv in session.invoices" :key="inv.id">
-            <td class="px-4 py-3">
-              <button v-if="inv.student_id" type="button" class="font-medium text-ink-900 hover:text-primary-700 hover:underline" @click="openLedger(inv.student_id)">{{ inv.recipient_name }}</button><p v-else class="font-medium text-ink-900">{{ inv.recipient_name }}</p>
-              <p v-if="inv.description" class="text-xs text-ink-500">{{ inv.description }}</p>
-            </td>
-            <td class="px-4 py-3 text-ink-700">{{ money(inv.amount_cents) }}</td>
-            <td class="px-4 py-3 text-ink-700">{{ money(inv.paid_cents) }}</td>
-            <td class="px-4 py-3"><SBadge :tone="statusTone(inv.status)">{{ inv.status }}</SBadge></td>
-            <td class="px-4 py-3 text-right">
+    <div v-else-if="session.invoices.length" class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section class="space-y-5">
+        <div v-for="group in invoiceGroups" :key="group.label" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="s-eyebrow">{{ group.label }}</p>
+            <p class="text-xs text-ink-500">{{ group.invoices.length }} invoice{{ group.invoices.length === 1 ? "" : "s" }}</p>
+          </div>
+          <article v-for="inv in group.invoices" :key="inv.id" class="rounded-lg border border-hairline bg-surface p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <button v-if="inv.student_id" type="button" class="text-left font-semibold text-ink-900 hover:text-primary-700 hover:underline" @click="openLedger(inv.student_id)">{{ inv.recipient_name }}</button>
+                <p v-else class="font-semibold text-ink-900">{{ inv.recipient_name }}</p>
+                <p class="mt-1 text-xs text-ink-500">Invoice #{{ inv.id }} | {{ invoiceDate(inv) }}</p>
+              </div>
+              <SBadge :tone="statusTone(inv.status)">{{ inv.status }}</SBadge>
+            </div>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-3">
+              <div class="rounded-md bg-surface-sunken px-3 py-2">
+                <p class="text-xs text-ink-500">Billed</p>
+                <p class="font-display text-xl font-semibold text-ink-900">{{ money(inv.amount_cents) }}</p>
+              </div>
+              <div class="rounded-md bg-surface-sunken px-3 py-2">
+                <p class="text-xs text-ink-500">Collected</p>
+                <p class="font-display text-xl font-semibold text-success">{{ money(inv.paid_cents) }}</p>
+              </div>
+              <div class="rounded-md bg-surface-sunken px-3 py-2">
+                <p class="text-xs text-ink-500">Due</p>
+                <p class="font-display text-xl font-semibold" :class="remaining(inv) ? 'text-accent-600' : 'text-ink-900'">{{ money(remaining(inv)) }}</p>
+              </div>
+            </div>
+
+            <ul v-if="inv.line_items.length" class="mt-4 divide-y divide-hairline rounded-md border border-hairline">
+              <li v-for="item in inv.line_items" :key="item.id" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span class="text-ink-700">{{ item.description }}</span>
+                <span class="font-medium text-ink-900">{{ money(item.amount_cents) }}</span>
+              </li>
+            </ul>
+            <p v-else-if="inv.description" class="mt-3 text-sm text-ink-500">{{ inv.description }}</p>
+
+            <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
               <template v-if="!inv.voided && inv.status !== 'paid'">
                 <SButton v-if="inv.status === 'unpaid'" variant="ghost" @click="edit(inv)">Edit</SButton>
                 <SButton variant="secondary" :disabled="session.loading === `invoice-${inv.id}`" @click="collect(inv)">Record payment</SButton>
-                <a :href="`/api/fees/invoices/${inv.id}/print`" target="_blank" class="text-xs font-semibold text-primary-700 hover:underline">Print</a>
+                <a :href="`/api/fees/invoices/${inv.id}/print`" target="_blank" class="rounded-md px-3 py-2 text-xs font-semibold text-primary-700 hover:bg-primary-50">Print</a>
                 <SButton variant="ghost" :disabled="session.loading === `invoice-${inv.id}`" @click="session.voidInvoice(inv.id)">Void</SButton>
               </template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="h-fit rounded-lg border border-hairline bg-surface p-5">
+        <p class="s-eyebrow">Collection focus</p>
+        <h2 class="mt-2 font-display text-xl font-semibold text-ink-900">{{ money(session.feesSummary?.outstanding_cents || 0) }}</h2>
+        <p class="mt-1 text-sm text-ink-500">Open balance across active invoices.</p>
+        <div v-if="collectionFocus.length" class="mt-4 space-y-3">
+          <button v-for="inv in collectionFocus" :key="inv.id" type="button" class="w-full rounded-md border border-hairline px-3 py-2 text-left hover:border-primary-200 hover:bg-primary-50" @click="openLedger(inv.student_id)">
+            <span class="block text-sm font-semibold text-ink-900">{{ inv.recipient_name }}</span>
+            <span class="mt-1 flex items-center justify-between text-xs text-ink-500"><span>#{{ inv.id }}</span><span class="font-semibold text-accent-600">{{ money(remaining(inv)) }}</span></span>
+          </button>
+        </div>
+        <p v-else class="mt-4 text-sm text-ink-500">No open invoices need follow-up.</p>
+      </aside>
     </div>
     <p v-else class="text-sm text-ink-500">No invoices yet.</p>
     <section v-if="ledgerOpen && session.feeLedger" class="rounded-lg border border-hairline bg-surface p-5"><div class="flex items-start justify-between gap-4"><div><p class="s-eyebrow">Learner ledger</p><h2 class="mt-1 font-display text-xl font-semibold text-ink-900">{{ session.feeLedger.student_name }}</h2><p class="mt-1 text-sm text-ink-500">Outstanding {{ money(session.feeLedger.outstanding_cents) }}</p></div><SButton variant="ghost" @click="ledgerOpen = false">Close</SButton></div><div class="mt-4 overflow-auto"><table class="w-full text-sm"><thead class="text-left text-xs uppercase text-ink-500"><tr><th class="pb-2">Date</th><th class="pb-2">Reference</th><th class="pb-2">Debit</th><th class="pb-2">Credit</th><th class="pb-2">Balance</th></tr></thead><tbody class="divide-y divide-hairline"><tr v-for="entry in session.feeLedger.entries" :key="`${entry.reference}-${entry.occurred_at}`"><td class="py-2 text-ink-500">{{ new Date(entry.occurred_at).toLocaleDateString() }}</td><td class="py-2"><a v-if="entry.kind === 'payment'" :href="`/api/fees/payments/${entry.reference.replace('Receipt #', '')}/receipt`" target="_blank" class="font-medium text-primary-700 hover:underline">{{ entry.reference }}</a><span v-else>{{ entry.reference }}</span><span v-if="entry.description" class="ml-2 text-ink-500">{{ entry.description }}</span></td><td class="py-2">{{ entry.debit_cents ? money(entry.debit_cents) : ' ' }}</td><td class="py-2">{{ entry.credit_cents ? money(entry.credit_cents) : ' ' }}</td><td class="py-2 font-medium">{{ money(entry.balance_cents) }}</td></tr></tbody></table></div></section>
