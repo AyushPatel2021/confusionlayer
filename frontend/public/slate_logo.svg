@@ -1,12 +1,17 @@
-<svg viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Slate">
+<svg viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Slate logo">
   <defs>
-    <linearGradient id="topLayer" x1="46" y1="36" x2="148" y2="140" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#12325c" />
-      <stop offset="1" stop-color="#1e4e8c" />
+    <linearGradient id="slateTop" x1="57" y1="42" x2="149" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#178A8A" />
+      <stop offset="1" stop-color="#0F6E6E" />
+    </linearGradient>
+    <linearGradient id="slatePaper" x1="43" y1="76" x2="133" y2="169" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EBF4F3" />
+      <stop offset="1" stop-color="#D6EAE9" />
     </linearGradient>
   </defs>
-  <rect x="34" y="86" width="92" height="92" rx="20" fill="#38bdf8" opacity="0.18" transform="rotate(-12 80 132)" />
-  <rect x="50" y="60" width="92" height="92" rx="20" fill="#38bdf8" opacity="0.4" transform="rotate(-6 96 106)" />
-  <rect x="66" y="34" width="92" height="92" rx="20" fill="url(#topLayer)" />
-  <path d="M94 78 L111 95 L143 60" stroke="#5eead4" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="31" y="86" width="90" height="90" rx="18" fill="url(#slatePaper)" transform="rotate(-12 76 131)" />
+  <rect x="48" y="61" width="90" height="90" rx="18" fill="#D6EAE9" transform="rotate(-6 93 106)" />
+  <rect x="65" y="35" width="92" height="92" rx="18" fill="url(#slateTop)" />
+  <path d="M91 79 L109 97 L143 61" stroke="#FAF8F3" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M72 137 C92 146 117 146 139 136" stroke="#C1592E" stroke-width="7" fill="none" stroke-linecap="round" opacity="0.9" />
 </svg>

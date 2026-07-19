@@ -14,8 +14,9 @@ onMounted(() => void session.restore());
   <div class="flex min-h-screen flex-col bg-paper text-ink-900">
     <header class="border-b border-hairline bg-paper/80 backdrop-blur">
       <div class="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-4">
-        <RouterLink to="/" class="flex items-center gap-2">
-          <img src="/slate_logo.svg" alt="Slate" class="h-9 w-auto" />
+        <RouterLink to="/" class="flex items-center gap-2.5">
+          <img src="/slate_logo.svg" alt="" class="h-9 w-9 object-contain" />
+          <span class="font-display text-xl font-semibold leading-none text-ink-900">Slate</span>
         </RouterLink>
         <nav class="hidden items-center gap-7 text-sm font-medium text-ink-700 md:flex">
           <RouterLink class="link-underline transition-colors hover:text-primary-600" to="/schools">Schools</RouterLink>
@@ -42,7 +43,10 @@ onMounted(() => void session.restore());
       <div class="mx-auto max-w-content px-6 py-10">
         <div class="flex flex-wrap items-start justify-between gap-6">
           <div>
-            <img src="/slate_logo.svg" alt="Slate" class="h-9 w-auto" />
+            <div class="flex items-center gap-2.5">
+              <img src="/slate_logo.svg" alt="" class="h-9 w-9 object-contain" />
+              <span class="font-display text-xl font-semibold leading-none text-ink-900">Slate</span>
+            </div>
             <p class="mt-1 text-xs text-ink-500">Run your school, clear the confusion.</p>
           </div>
           <nav class="flex flex-wrap gap-x-8 gap-y-2 text-sm text-ink-700">

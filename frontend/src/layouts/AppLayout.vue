@@ -79,8 +79,9 @@ async function signOut() {
       :class="sidebarCollapsed ? 'w-20' : 'w-72'"
     >
       <div class="flex h-16 items-center border-b border-hairline px-4" :class="sidebarCollapsed ? 'justify-center' : 'justify-between'">
-        <RouterLink to="/app" class="flex items-center" :title="sidebarCollapsed ? 'Slate workspace' : undefined">
-          <img src="/slate_logo.svg" alt="Slate" :class="sidebarCollapsed ? 'h-9 w-9 object-contain' : 'h-9 w-auto'" />
+        <RouterLink to="/app" class="flex min-w-0 items-center gap-2.5" :title="sidebarCollapsed ? 'Slate workspace' : undefined">
+          <img src="/slate_logo.svg" alt="" class="h-9 w-9 shrink-0 object-contain" />
+          <span v-if="!sidebarCollapsed" class="truncate font-display text-xl font-semibold leading-none text-ink-900">Slate</span>
         </RouterLink>
         <button
           v-if="!sidebarCollapsed"
@@ -107,7 +108,10 @@ async function signOut() {
     <div v-if="mobileNavOpen" class="fixed inset-0 z-50 bg-ink-900/40 md:hidden" role="presentation" @click="mobileNavOpen = false" />
     <aside class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-hairline bg-surface transition-transform duration-200 md:hidden" :class="mobileNavOpen ? 'translate-x-0' : '-translate-x-full'">
       <div class="flex h-16 items-center justify-between border-b border-hairline px-4">
-        <RouterLink to="/app" class="flex items-center"><img src="/slate_logo.svg" alt="Slate" class="h-9 w-auto" /></RouterLink>
+        <RouterLink to="/app" class="flex items-center gap-2.5">
+          <img src="/slate_logo.svg" alt="" class="h-9 w-9 object-contain" />
+          <span class="font-display text-xl font-semibold leading-none text-ink-900">Slate</span>
+        </RouterLink>
         <button class="s-focus flex h-9 w-9 items-center justify-center rounded-md text-ink-600 hover:bg-primary-50" title="Close menu" aria-label="Close menu" @click="mobileNavOpen = false"><X :size="20" /></button>
       </div>
       <div class="border-b border-hairline px-4 py-4">
