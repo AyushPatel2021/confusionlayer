@@ -107,6 +107,15 @@ class LearningApiTest(TestCase):
         self.assertEqual(response.chapters[1].locked, True)
         self.assertEqual(response.chapters[1].concepts[0].locked, True)
 
+    def test_individual_student_syllabus_treats_self_study_chapters_as_unlocked(self) -> None:
+        self.db.get(Organization, self.student_user.org_id).segment = "individual"
+        self.db.commit()
+
+        response = student_syllabus(current_user=self.student_user, db=self.db)
+
+        self.assertTrue(all(not chapter.locked for chapter in response.chapters))
+        self.assertTrue(all(not concept.locked for chapter in response.chapters for concept in chapter.concepts))
+
     def test_teacher_can_unlock_own_classroom_chapter(self) -> None:
         response = unlock_chapter(
             classroom_id=self.classroom.id,
@@ -157,6 +166,14 @@ class LearningApiTest(TestCase):
         with self.assertRaises(HTTPException) as exc:
             concept_detail(concept_id=self.locked_concept.id, current_user=self.student_user, db=self.db)
         self.assertEqual(exc.exception.status_code, 403)
+
+    def test_individual_student_can_read_self_study_concept_without_unlock_row(self) -> None:
+        self.db.get(Organization, self.student_user.org_id).segment = "individual"
+        self.db.commit()
+
+        response = concept_detail(concept_id=self.locked_concept.id, current_user=self.student_user, db=self.db)
+
+        self.assertEqual(response.id, self.locked_concept.id)
 
     def test_student_can_read_unlocked_concept_detail(self) -> None:
         response = concept_detail(concept_id=self.unlocked_concept.id, current_user=self.student_user, db=self.db)

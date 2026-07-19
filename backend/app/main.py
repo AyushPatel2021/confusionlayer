@@ -1060,9 +1060,12 @@ def demo_context(current_user: User = Depends(get_current_user), db: Session = D
 def student_syllabus(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> StudentSyllabusResponse:
     classroom = _get_user_classroom(db, current_user)
     chapters = db.scalars(select(Chapter).where(Chapter.subject_id == classroom.subject_id).order_by(Chapter.order)).all()
-    unlocked_ids = set(
-        db.scalars(select(ChapterUnlock.chapter_id).where(ChapterUnlock.classroom_id == classroom.id)).all()
-    )
+    if _is_individual_learner(db, current_user):
+        unlocked_ids = {chapter.id for chapter in chapters}
+    else:
+        unlocked_ids = set(
+            db.scalars(select(ChapterUnlock.chapter_id).where(ChapterUnlock.classroom_id == classroom.id)).all()
+        )
 
     return StudentSyllabusResponse(
         classroom=_classroom_response(classroom),
@@ -3213,7 +3216,7 @@ def _get_accessible_concept(db: Session, user: User, concept_id: int) -> Concept
     classroom = _get_user_classroom(db, user)
     if concept.chapter.subject_id != classroom.subject_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found for this classroom")
-    if user.role == "student" and not _is_chapter_unlocked(db, classroom.id, concept.chapter_id):
+    if user.role == "student" and not _is_individual_learner(db, user) and not _is_chapter_unlocked(db, classroom.id, concept.chapter_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chapter is locked")
     return concept
 
