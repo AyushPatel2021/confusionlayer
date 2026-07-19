@@ -97,9 +97,9 @@ async function remove(classroomId: number) {
         <div class="flex items-center gap-3"><SStatCard label="Enrolled" :value="classroom.students.length" /><button class="s-focus text-sm font-semibold text-primary-700 hover:underline" @click="startEdit(classroom)">Edit</button><button class="s-focus text-sm font-semibold text-danger hover:underline" @click="classroomToDelete = classroom">Delete</button></div>
       </div>
       <form v-if="editingId === classroom.id" class="mt-5 grid gap-3 rounded-md border border-hairline bg-paper p-4 md:grid-cols-4" @submit.prevent="saveEdit">
-        <input v-model="editName" class="s-input" aria-label="Classroom name" required />
-        <select v-model="editSubjectId" class="s-input" aria-label="Subject"><option v-for="subject in options?.subjects" :key="subject.id" :value="subject.id">{{ subject.name }}</option></select>
-        <select v-model="editTeacherId" class="s-input" aria-label="Class teacher"><option v-for="teacher in options?.teachers" :key="teacher.id" :value="teacher.id">{{ teacher.name }}</option></select>
+        <label class="text-sm font-medium text-ink-700">{{ isSchool ? "Classroom name" : "Batch name" }}<input v-model="editName" class="s-input mt-1" aria-label="Classroom name" required /></label>
+        <SCombobox v-model="editSubjectId" label="Subject" placeholder="Select subject" :options="subjectOptions" />
+        <SCombobox v-model="editTeacherId" :label="isSchool ? 'Class teacher' : 'Instructor'" placeholder="Select teacher" :options="teacherOptions" />
         <div class="flex gap-2"><SButton type="submit" variant="secondary">Save</SButton><SButton variant="ghost" @click="editingId = null">Cancel</SButton></div>
       </form>
       <div class="mt-5 grid gap-3 rounded-md border border-hairline bg-paper p-4 md:grid-cols-[1fr_auto]">

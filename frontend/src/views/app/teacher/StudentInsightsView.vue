@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 
 import SBadge from "../../../components/ui/SBadge.vue";
+import SCombobox from "../../../components/ui/SCombobox.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
 import { useSessionStore } from "../../../stores/session";
@@ -12,6 +13,8 @@ const classroomId = ref<number | null>(null);
 const studentId = ref<number | null>(null);
 const classrooms = computed(() => session.dashboard?.classrooms || []);
 const selectedClassroom = computed(() => classrooms.value.find((room) => room.id === classroomId.value));
+const classroomOptions = computed(() => classrooms.value.map((room) => ({ label: room.name, value: room.id, hint: room.subject.name })));
+const studentOptions = computed(() => (selectedClassroom.value?.students || []).map((student) => ({ label: student.name, value: student.id })));
 
 onMounted(async () => {
   await session.loadDashboard();
@@ -45,16 +48,8 @@ const readinessText = (value: number) => value >= 0.8 ? "Ready" : value >= 0.6 ?
     <SPageHeader eyebrow="Teaching" title="Student insights" subtitle="Review each learner's strongest concepts, gaps, and forecast risk before planning support." />
 
     <div class="grid gap-3 rounded-lg border border-hairline bg-surface p-5 md:grid-cols-2">
-      <label class="text-sm">Classroom
-        <select v-model="classroomId" class="s-input mt-1">
-          <option v-for="room in classrooms" :key="room.id" :value="room.id">{{ room.name }}</option>
-        </select>
-      </label>
-      <label class="text-sm">Student
-        <select v-model="studentId" class="s-input mt-1">
-          <option v-for="student in selectedClassroom?.students || []" :key="student.id" :value="student.id">{{ student.name }}</option>
-        </select>
-      </label>
+      <SCombobox v-model="classroomId" label="Classroom" placeholder="Choose classroom" :options="classroomOptions" />
+      <SCombobox v-model="studentId" label="Student" placeholder="Choose student" :options="studentOptions" />
     </div>
 
     <SLoadingState v-if="session.loading === 'student-insights'" :rows="3" />

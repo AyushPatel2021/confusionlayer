@@ -64,15 +64,24 @@ const links = computed(() => {
       { label: "Workspace", items: [{ to: "/app/account", label: "Account", icon: UserRoundCog }] },
     ];
   }
+  const canUseTeacherWorkspace = session.user?.role === "teacher" || session.user?.role === "school_admin";
   const classroomItems = [
     { to: "/app/dashboard", label: "Overview", icon: ChartNoAxesCombined },
-    { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
-    { to: "/app/teacher/students", label: "Student insights", icon: UsersRound },
-    { to: "/app/attendance", label: "Attendance", icon: CalendarCheck },
     { to: "/app/curriculum", label: "Curriculum", icon: FolderKanban },
-    { to: "/app/teacher/forecast", label: "Forecast brief", icon: CalendarClock },
-    { to: "/app/teacher/confusion", label: "Confusion brief", icon: AlertTriangle },
   ];
+  if (canUseTeacherWorkspace) {
+    classroomItems.splice(
+      1,
+      0,
+      { to: "/app/teacher", label: "Classroom", icon: GraduationCap },
+      { to: "/app/teacher/students", label: "Student insights", icon: UsersRound },
+      { to: "/app/teacher/forecast", label: "Forecast brief", icon: CalendarClock },
+      { to: "/app/teacher/confusion", label: "Confusion brief", icon: AlertTriangle },
+    );
+  }
+  if (session.user?.role !== "owner" && session.user?.segment === "school") {
+    classroomItems.splice(canUseTeacherWorkspace ? 3 : 1, 0, { to: "/app/attendance", label: "Attendance", icon: CalendarCheck });
+  }
   const groups = [{ label: "Teaching", items: classroomItems }];
   if (session.isOrgAdmin && session.user?.segment === "school") {
     classroomItems.splice(1, 0, { to: "/app/classrooms", label: "Classrooms", icon: School });

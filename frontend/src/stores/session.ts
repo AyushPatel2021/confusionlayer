@@ -1173,6 +1173,8 @@ export const useSessionStore = defineStore("session", {
       try {
         const tree = await api<CurriculumTree>("/api/curriculum/import/commit", { method: "POST", body: JSON.stringify(payload) });
         this.importDraft = null;
+        await this.loadCurriculumSubjects();
+        await this.loadClassroomOptions();
         return tree;
       } catch (error) {
         this.error = messageFromError(error);

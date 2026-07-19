@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import SBadge from "../../../components/ui/SBadge.vue";
 import SButton from "../../../components/ui/SButton.vue";
+import SCombobox from "../../../components/ui/SCombobox.vue";
 import SConfirmDialog from "../../../components/ui/SConfirmDialog.vue";
 import SLoadingState from "../../../components/ui/SLoadingState.vue";
 import SPageHeader from "../../../components/ui/SPageHeader.vue";
@@ -32,6 +33,10 @@ const roleMix = computed(() => roles.map((item) => ({
   role: item,
   count: session.members.filter((member) => member.role === item).length,
 })).filter((item) => item.count));
+const roleOptions = computed(() => roles.map((item) => ({ label: roleLabel(item), value: item })));
+const departmentSelectOptions = computed(() => [{ label: "All departments", value: "all" }, ...departments.value.map((item) => ({ label: item, value: item }))]);
+const departmentOptionsForCombobox = computed(() => departmentOptions.map((item) => ({ label: item, value: item })));
+const studentSelectOptions = computed(() => session.studentOptions.map((student) => ({ label: student.name, value: student.id })));
 const departmentGroups = computed(() => {
   const source = visibleMembers.value;
   const names = department.value === "all" ? departments.value : [department.value];
@@ -64,11 +69,12 @@ async function link() {
   }
 }
 
-function setRole(userId: number, event: Event) {
-  const role = (event.target as HTMLSelectElement).value;
-  void session.changeMemberRole(userId, role);
+function setRoleValue(userId: number, value: string | number | null) {
+  if (typeof value === "string") void session.changeMemberRole(userId, value);
 }
-function setDepartment(userId: number, event: Event) { void session.changeMemberDepartment(userId, (event.target as HTMLSelectElement).value); }
+function setDepartmentValue(userId: number, value: string | number | null) {
+  if (typeof value === "string") void session.changeMemberDepartment(userId, value);
+}
 async function removeMember() {
   if (!memberToRemove.value) return;
   await session.removeMember(memberToRemove.value.id);
@@ -100,12 +106,8 @@ async function removeMember() {
         </div>
         <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
           <label class="text-sm">Email<input v-model="email" type="email" class="s-input mt-1" required /></label>
-          <label class="text-sm">Role
-            <select v-model="role" class="s-input mt-1 capitalize" @change="roleChanged">
-              <option v-for="r in roles" :key="r" :value="r">{{ roleLabel(r) }}</option>
-            </select>
-          </label>
-          <label class="text-sm">Department<select v-model="inviteDepartment" class="s-input mt-1"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select></label>
+          <SCombobox v-model="role" label="Role" placeholder="Choose role" :options="roleOptions" @change="roleChanged" />
+          <SCombobox v-model="inviteDepartment" label="Department" placeholder="Choose department" :options="departmentOptionsForCombobox" />
         </div>
       </form>
 
@@ -127,16 +129,25 @@ async function removeMember() {
       <p class="mt-1 text-xs text-ink-500">Connect an invited parent account to a student so they can follow along.</p>
       <form class="mt-3 flex flex-wrap items-end gap-3" @submit.prevent="link">
         <label class="flex-1 text-sm">Parent email<input v-model="guardianEmail" type="email" class="s-input mt-1" /></label>
-        <label class="text-sm">Student<select v-model="guardianStudentId" class="s-input mt-1"><option :value="null">Choose student</option><option v-for="student in session.studentOptions" :key="student.id" :value="student.id">{{ student.name }}</option></select></label>
+        <SCombobox v-model="guardianStudentId" label="Student" placeholder="Choose student" :options="studentSelectOptions" />
         <SButton type="submit" variant="secondary" :disabled="session.loading === 'link-guardian'">Link</SButton>
       </form>
       <p v-if="guardianDone" class="mt-2 text-sm text-success">Linked.</p>
     </div>
 
-    <div class="flex flex-wrap gap-3 rounded-lg border border-hairline bg-surface p-4">
-      <input v-model="query" class="s-input min-w-60 flex-1" placeholder="Search by name, email, or role" aria-label="Search members" />
-      <select v-model="department" class="s-input"><option value="all">All departments</option><option v-for="item in departments" :key="item" :value="item">{{ item }}</option></select>
-    </div>
+    <section class="rounded-lg border border-hairline bg-surface p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="s-eyebrow">Find members</p>
+          <p class="mt-1 text-sm text-ink-500">Search by name, email, or role, then narrow the list by department.</p>
+        </div>
+        <SBadge tone="neutral">{{ visibleMembers.length }} shown</SBadge>
+      </div>
+      <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(14rem,0.7fr)]">
+        <label class="text-sm font-medium text-ink-700">Search<input v-model="query" class="s-input mt-1" placeholder="Name, email, or role" aria-label="Search members" /></label>
+        <SCombobox v-model="department" label="Department" placeholder="All departments" :options="departmentSelectOptions" />
+      </div>
+    </section>
     <SLoadingState v-if="session.loading === 'members' && !session.members.length" :rows="3" />
     <div v-else class="space-y-6">
       <div>
@@ -163,11 +174,9 @@ async function removeMember() {
                   </div>
                 </div>
                 <div v-if="m.role !== 'owner'" class="mt-4 grid gap-2 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_auto_auto]">
-                  <select v-if="!['teacher', 'student'].includes(m.role)" :value="m.role" class="s-input py-2 text-xs" @change="setRole(m.id, $event)">
-                    <option v-for="item in roles" :key="item" :value="item">{{ roleLabel(item) }}</option>
-                  </select>
+                  <SCombobox v-if="!['teacher', 'student'].includes(m.role)" :model-value="m.role" placeholder="Role" :options="roleOptions" @update:model-value="setRoleValue(m.id, $event)" />
                   <div v-else class="rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-500">Role managed by profile</div>
-                  <select :value="m.department" class="s-input py-2 text-xs" @change="setDepartment(m.id, $event)"><option v-for="item in departmentOptions" :key="item" :value="item">{{ item }}</option></select>
+                  <SCombobox :model-value="m.department" placeholder="Department" :options="departmentOptionsForCombobox" @update:model-value="setDepartmentValue(m.id, $event)" />
                   <SButton variant="ghost" :disabled="session.loading === `member-status-${m.id}`" @click="session.changeMemberStatus(m.id, m.status === 'active' ? 'inactive' : 'active')">{{ m.status === 'active' ? 'Deactivate' : 'Activate' }}</SButton>
                   <SButton variant="ghost" :disabled="session.loading === `member-remove-${m.id}`" @click="memberToRemove = m">Remove</SButton>
                 </div>

@@ -442,6 +442,8 @@ Night 1 deployment note: HTTPS is working at `https://confusionlayer.znova.in` t
 
 Production demo reset evidence: on 2026-07-19 the guarded reset seed was run on the VM after taking a DB backup. Live demo data now includes 3 orgs (school, institute, individual), 25 users, 16 students, 45 concepts, 45 concept edges, fees/admissions/HR/payroll/attendance/timetable data for the school demo, and populated learning dashboards for institute and individual demos.
 
+UI polish evidence: school-owner sidebar now avoids teacher-only Classroom, Forecast Brief, and Confusion Brief links; PDF import supports drag-and-drop and offers immediate assignment of the imported subject to an existing classroom/batch; app selection fields use the shared combobox component; Slate SVG branding is used for the app shell and browser favicon.
+
 ### Night 2 — Backend Core Loop + Real Auth
 - [x] Self-registration (signup/login, email+password) implemented and deployed
 - [x] "View Demo Data" fast-path wired to the seeded classroom

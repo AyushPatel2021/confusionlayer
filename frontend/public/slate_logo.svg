@@ -1,0 +1,20 @@
+<svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="topLayer" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12325C"/>
+      <stop offset="1" stop-color="#1E4E8C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon: layers of "confusion" softening upward into a clear, solved top layer -->
+  <g>
+    <rect x="34" y="100" width="86" height="86" rx="18" fill="#38BDF8" opacity="0.18" transform="rotate(-12 77 143)"/>
+    <rect x="50" y="76" width="86" height="86" rx="18" fill="#38BDF8" opacity="0.4" transform="rotate(-6 93 119)"/>
+    <rect x="66" y="50" width="86" height="86" rx="18" fill="url(#topLayer)"/>
+    <path d="M92 92 L108 108 L138 74" stroke="#5EEAD4" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="198" y="122" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="66" font-weight="700" fill="#12325C" letter-spacing="1">slate</text>
+  <text x="201" y="150" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="600" letter-spacing="4" fill="#1E88C7">LEARN CLEARLY</text>
+</svg>

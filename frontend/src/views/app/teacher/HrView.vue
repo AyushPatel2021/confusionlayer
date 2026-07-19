@@ -20,6 +20,12 @@ const salaryStructureForm = ref({ name: "", amount: "" });
 const statusTarget = ref<{ id: number; name: string; status: string } | null>(null);
 const designationOptions = computed(() => session.designations.map((item) => ({ label: item.name, value: item.id, hint: item.department || "No department" })));
 const salaryStructureOptions = computed(() => session.salaryStructures.map((item) => ({ label: item.name, value: item.id, hint: money(item.monthly_amount_cents) })));
+const employmentOptions = [
+  { label: "Full time", value: "full_time" },
+  { label: "Part time", value: "part_time" },
+  { label: "Contract", value: "contract" },
+  { label: "Intern", value: "intern" },
+];
 const designationById = computed(() => new Map(session.designations.map((item) => [item.id, item])));
 const salaryStructureById = computed(() => new Map(session.salaryStructures.map((item) => [item.id, item])));
 const activeEmployees = computed(() => session.employees.filter((employee) => employee.status === "active"));
@@ -87,7 +93,7 @@ async function addSalaryStructure() { if (await session.createSalaryStructure({ 
       <label class="text-sm">Name<input v-model="form.name" class="s-input mt-1" required /></label>
       <label class="text-sm">Email<input v-model="form.email" type="email" class="s-input mt-1" /></label>
       <SCombobox v-model="form.designation_id" label="Designation" placeholder="Choose designation" :options="designationOptions" />
-      <label class="text-sm">Employment type<select v-model="form.employment_type" class="s-input mt-1"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="intern">Intern</option></select></label>
+      <SCombobox v-model="form.employment_type" label="Employment type" placeholder="Choose type" :options="employmentOptions" />
       <label class="text-sm">Phone<input v-model="form.phone" class="s-input mt-1" /></label>
       <label class="text-sm">Join date<input v-model="form.join_date" type="date" class="s-input mt-1" /></label>
       <SCombobox v-model="form.salary_structure_id" label="Salary structure" placeholder="Custom salary" :options="salaryStructureOptions" @change="syncSalaryFromStructure" />
